@@ -3,7 +3,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
-import ThirdPersonCamera from './ThirdPersonCamera.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -13,6 +12,45 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.getElementById('container').appendChild(renderer.domElement);
+
+// Third-person camera settings
+const cameraSettings = {
+  positionX: 0,       // X position of the static camera
+  positionY: 10,      // Y position of the static camera (height)
+  positionZ: 20,      // Z position of the static camera (distance)
+  lookAtX: 0,         // X position to look at
+  lookAtY: 0,         // Y position to look at
+  lookAtZ: 0          // Z position to look at
+};
+
+// Static camera controller
+class StaticCamera {
+  constructor(camera, settings) {
+    this.camera = camera;
+    this.settings = settings;
+    this.setupCamera();
+  }
+  
+  // Set up the camera in a fixed position
+  setupCamera() {
+    this.camera.position.set(
+      this.settings.positionX,
+      this.settings.positionY,
+      this.settings.positionZ
+    );
+    
+    this.camera.lookAt(
+      this.settings.lookAtX,
+      this.settings.lookAtY,
+      this.settings.lookAtZ
+    );
+  }
+  
+  // Update camera settings if they change
+  updateSettings() {
+    this.setupCamera();
+  }
+}
 
 // Orbit controls for development
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -166,7 +204,7 @@ const jumpForce = 10;
 let velocity = new THREE.Vector3();
 let isGrounded = true;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
-let thirdPersonCamera; // Reference to our camera controller
+let staticCamera; // Reference to our camera controller
 
 function updateCharacter(delta) {
   if (!characterBody) return;
@@ -230,6 +268,40 @@ function updateCharacter(delta) {
   }
 }
 
+// Setup GUI
+function setupGUI() {
+  const gui = new GUI();
+  const cameraFolder = gui.addFolder('Static Camera');
+  
+  // Add controls for camera position
+  cameraFolder.add(cameraSettings, 'positionX', -50, 50).name('Camera X').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
+  
+  cameraFolder.add(cameraSettings, 'positionY', 1, 50).name('Camera Y').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
+  
+  cameraFolder.add(cameraSettings, 'positionZ', -50, 50).name('Camera Z').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
+  
+  // Add controls for lookAt point
+  cameraFolder.add(cameraSettings, 'lookAtX', -50, 50).name('Look At X').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
+  
+  cameraFolder.add(cameraSettings, 'lookAtY', 0, 20).name('Look At Y').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
+  
+  cameraFolder.add(cameraSettings, 'lookAtZ', -50, 50).name('Look At Z').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
+  
+  cameraFolder.open();
+}
+
 // Animation loop
 const clock = new THREE.Clock();
 function animate() {
@@ -242,10 +314,7 @@ function animate() {
     if (mixer) mixer.update(delta);
     updateCharacter(delta);
     
-    // Update third-person camera
-    if (thirdPersonCamera && character) {
-      thirdPersonCamera.update(delta);
-    }
+    // No camera updates needed for static camera
   }
   
   controls.update();
@@ -255,10 +324,6 @@ function animate() {
 // Initialize and start
 async function init() {
   try {
-    // Set initial camera position
-    camera.position.set(0, 10, 20);
-    camera.lookAt(0, 0, 0);
-    
     // Initialize physics first
     await initPhysics();
     
@@ -268,8 +333,11 @@ async function init() {
     // Load models
     await loadModels();
     
-    // Setup third-person camera
-    thirdPersonCamera = new ThirdPersonCamera(camera, character, scene);
+    // Setup static camera
+    staticCamera = new StaticCamera(camera, cameraSettings);
+    
+    // Setup GUI controls
+    setupGUI();
     
     // Start animation loop
     animate();
