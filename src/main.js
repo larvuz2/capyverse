@@ -79,17 +79,22 @@ function createTemporaryCapybara() {
 // Load character and animations
 async function loadModels() {
   try {
-    // For now, use a temporary capybara until we have the model
-    createTemporaryCapybara();
-    
-    // In a real implementation, we would load the model like this:
-    /*
+    // Load the capybara model
     const characterModel = await loader.loadAsync('/character/capybara.glb');
     character = characterModel.scene;
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
     scene.add(character);
     
+    // Create physics body for character
+    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(0, 1, 0);
+    characterBody = world.createRigidBody(rigidBodyDesc);
+    
+    const characterColliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.3);
+    world.createCollider(characterColliderDesc, characterBody);
+    
+    // Load animations
     mixer = new THREE.AnimationMixer(character);
     
     const idleModel = await loader.loadAsync('/animations/idle.glb');
@@ -99,9 +104,10 @@ async function loadModels() {
     walkAction = mixer.clipAction(walkModel.animations[0]);
     activeAction = idleAction;
     idleAction.play();
-    */
   } catch (error) {
     console.error("Error loading models:", error);
+    // Fallback to temporary capybara if loading fails
+    createTemporaryCapybara();
   }
 }
 
@@ -171,19 +177,19 @@ function updateCharacter(delta) {
     movement.normalize().multiplyScalar(moveSpeed);
     lastDirection.copy(movement).normalize();
     
-    // Animation handling would go here
-    // if (activeAction !== walkAction) {
-    //   activeAction.fadeOut(0.2);
-    //   walkAction.reset().fadeIn(0.2).play();
-    //   activeAction = walkAction;
-    // }
+    // Switch to walk animation
+    if (mixer && activeAction !== walkAction) {
+      activeAction.fadeOut(0.2);
+      walkAction.reset().fadeIn(0.2).play();
+      activeAction = walkAction;
+    }
   } else {
-    // Animation handling would go here
-    // if (activeAction !== idleAction) {
-    //   activeAction.fadeOut(0.2);
-    //   idleAction.reset().fadeIn(0.2).play();
-    //   activeAction = idleAction;
-    // }
+    // Switch to idle animation
+    if (mixer && activeAction !== idleAction) {
+      activeAction.fadeOut(0.2);
+      idleAction.reset().fadeIn(0.2).play();
+      activeAction = idleAction;
+    }
   }
 
   // Apply movement
