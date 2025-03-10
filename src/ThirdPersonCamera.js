@@ -3,16 +3,16 @@ import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 // Constants
 const DEFAULT_PARAMS = {
-  distance: 10,
+  distance: 5,           // Reduced distance for better visibility
   minDistance: 2,
   maxDistance: 20,
-  height: 5,
+  height: 2.5,           // Increased height to look down at character
   minHeight: 1,
   maxHeight: 15,
   followSpeed: 5,
   rotationSpeed: 3,
   offsetX: 0,
-  offsetZ: -3,
+  offsetZ: 0,            // Changed to 0 to position camera directly behind
   lookAhead: 0.5,
   damping: 0.1
 };
@@ -44,12 +44,12 @@ class ThirdPersonCamera {
     gui.add(this.params, 'distance', 
       this.params.minDistance, 
       this.params.maxDistance, 
-      0.1).name('Distance');
+      0.1).name('Distance').onChange(() => this.updateImmediately());
     
     gui.add(this.params, 'height', 
       this.params.minHeight, 
       this.params.maxHeight, 
-      0.1).name('Height');
+      0.1).name('Height').onChange(() => this.updateImmediately());
     
     gui.add(this.params, 'followSpeed', 
       1, 10, 0.1).name('Follow Speed');
@@ -58,16 +58,24 @@ class ThirdPersonCamera {
       1, 10, 0.1).name('Rotation Speed');
     
     gui.add(this.params, 'offsetX', 
-      -5, 5, 0.1).name('X Offset');
+      -5, 5, 0.1).name('X Offset').onChange(() => this.updateImmediately());
     
     gui.add(this.params, 'offsetZ', 
-      -5, 5, 0.1).name('Z Offset');
+      -5, 5, 0.1).name('Z Offset').onChange(() => this.updateImmediately());
     
     gui.add(this.params, 'lookAhead', 
-      0, 2, 0.1).name('Look Ahead');
+      0, 2, 0.1).name('Look Ahead').onChange(() => this.updateImmediately());
     
     gui.add(this.params, 'damping', 
       0, 1, 0.01).name('Damping');
+  }
+
+  // Method to update camera immediately when parameters change
+  updateImmediately() {
+    if (!this.target) return;
+    
+    // Force update with a small delta to ensure smooth movement
+    this.update(0.016);
   }
 
   update(delta) {
