@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import * as RAPIER from '@dimforge/rapier3d';
+import RAPIER from '@dimforge/rapier3d';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -40,17 +40,20 @@ let world, characterBody;
 let physicsInitialized = false;
 
 async function initPhysics() {
-  // Initialize RAPIER
-  await RAPIER.init();
+  // Wait for RAPIER to initialize
+  const rapier = await RAPIER();
   
   // Create a physics world
-  world = new RAPIER.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
+  world = new rapier.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
   
   // Ground
-  const groundColliderDesc = RAPIER.ColliderDesc.cuboid(100.0, 0.1, 100.0);
+  const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0);
   world.createCollider(groundColliderDesc);
   
   physicsInitialized = true;
+  
+  // Store RAPIER namespace for later use
+  window.RAPIER = rapier;
 }
 
 // Character and animations
@@ -68,11 +71,11 @@ function createTemporaryCapybara() {
   scene.add(character);
   
   // Create physics body for character
-  const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+  const rigidBodyDesc = window.RAPIER.RigidBodyDesc.dynamic()
     .setTranslation(0, 1, 0);
   characterBody = world.createRigidBody(rigidBodyDesc);
   
-  const characterColliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.3);
+  const characterColliderDesc = window.RAPIER.ColliderDesc.capsule(0.5, 0.3);
   world.createCollider(characterColliderDesc, characterBody);
 }
 
@@ -87,11 +90,11 @@ async function loadModels() {
     scene.add(character);
     
     // Create physics body for character
-    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
+    const rigidBodyDesc = window.RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(0, 1, 0);
     characterBody = world.createRigidBody(rigidBodyDesc);
     
-    const characterColliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.3);
+    const characterColliderDesc = window.RAPIER.ColliderDesc.capsule(0.5, 0.3);
     world.createCollider(characterColliderDesc, characterBody);
     
     // Load animations
@@ -160,7 +163,7 @@ function updateCharacter(delta) {
   
   // Check if grounded
   const position = characterBody.translation();
-  const ray = new RAPIER.Ray(
+  const ray = new window.RAPIER.Ray(
     { x: position.x, y: position.y, z: position.z },
     { x: 0, y: -1, z: 0 }
   );
