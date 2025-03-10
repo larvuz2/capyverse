@@ -15,12 +15,12 @@ document.getElementById('container').appendChild(renderer.domElement);
 
 // Third-person camera settings
 const cameraSettings = {
-  distance: 10,       // Distance from the character
-  height: 5,          // Height above the character
-  rotationOffset: 0,  // Rotation offset around character (in radians)
-  lookAtHeight: 1,    // Height offset for lookAt point
-  damping: 0.05,      // Camera movement smoothing factor
-  rotationSpeed: 0.01 // How fast the camera rotates around character
+  distance: 3.1694,    // Distance from the character
+  height: 1.1741,      // Height above the character
+  rotationOffset: 0,   // Rotation offset around character (in radians)
+  lookAtHeight: 0.515, // Height offset for lookAt point
+  damping: 0.05,       // Camera movement smoothing factor
+  rotationSpeed: 0.01  // How fast the camera rotates around character
 };
 
 // Third-person camera controller
@@ -315,10 +315,21 @@ function setupGUI() {
   const gui = new GUI();
   const cameraFolder = gui.addFolder('Third Person Camera');
   
-  cameraFolder.add(cameraSettings, 'distance', 0.1, 30).name('Distance');
-  cameraFolder.add(cameraSettings, 'height', 0.1, 20).name('Height');
-  cameraFolder.add(cameraSettings, 'lookAtHeight', 0, 5).name('Look At Height');
+  // Add controls with onChange handlers to immediately update camera
+  cameraFolder.add(cameraSettings, 'distance', 0.1, 30).name('Distance').onChange(() => {
+    if (thirdPersonCamera) thirdPersonCamera.updatePosition(true);
+  });
+  
+  cameraFolder.add(cameraSettings, 'height', 0.1, 20).name('Height').onChange(() => {
+    if (thirdPersonCamera) thirdPersonCamera.updatePosition(true);
+  });
+  
+  cameraFolder.add(cameraSettings, 'lookAtHeight', 0, 5).name('Look At Height').onChange(() => {
+    if (thirdPersonCamera) thirdPersonCamera.updatePosition(true);
+  });
+  
   cameraFolder.add(cameraSettings, 'damping', 0.01, 0.5).name('Smoothing');
+  
   cameraFolder.add(cameraSettings, 'rotationSpeed', 0.001, 0.05).name('Rotation Speed');
   
   cameraFolder.open();
