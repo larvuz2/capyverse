@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import RAPIER from '@dimforge/rapier3d';
+import * as RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 // Scene setup
@@ -107,13 +107,10 @@ scene.add(directionalLight);
 // Physics setup
 let world, characterBody;
 let physicsInitialized = false;
-let rapier;
+let rapier = RAPIER;
 
 async function initPhysics() {
   try {
-    // Initialize RAPIER
-    rapier = await RAPIER.init();
-    
     // Create a physics world
     world = new rapier.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
     
