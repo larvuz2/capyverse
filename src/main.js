@@ -315,8 +315,8 @@ function setupGUI() {
   const gui = new GUI();
   const cameraFolder = gui.addFolder('Third Person Camera');
   
-  cameraFolder.add(cameraSettings, 'distance', 3, 20).name('Distance');
-  cameraFolder.add(cameraSettings, 'height', 1, 15).name('Height');
+  cameraFolder.add(cameraSettings, 'distance', 0.1, 30).name('Distance');
+  cameraFolder.add(cameraSettings, 'height', 0.1, 20).name('Height');
   cameraFolder.add(cameraSettings, 'lookAtHeight', 0, 5).name('Look At Height');
   cameraFolder.add(cameraSettings, 'damping', 0.01, 0.5).name('Smoothing');
   cameraFolder.add(cameraSettings, 'rotationSpeed', 0.001, 0.05).name('Rotation Speed');
