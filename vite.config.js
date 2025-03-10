@@ -11,14 +11,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'esnext',
-    // Ensure Rapier is properly handled
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          rapier: ['@dimforge/rapier3d'],
-        },
-      },
-    },
+    minify: 'terser',
+    sourcemap: true,
+    assetsInlineLimit: 0,
   },
   publicDir: 'public',
   root: './',
