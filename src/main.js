@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import RAPIER from '@dimforge/rapier3d';
+import RAPIER from '@dimforge/rapier3d/rapier';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -38,22 +38,25 @@ scene.add(directionalLight);
 // Physics setup
 let world, characterBody;
 let physicsInitialized = false;
+let rapier;
 
 async function initPhysics() {
-  // Wait for RAPIER to initialize
-  const rapier = await RAPIER();
-  
-  // Create a physics world
-  world = new rapier.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
-  
-  // Ground
-  const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0);
-  world.createCollider(groundColliderDesc);
-  
-  physicsInitialized = true;
-  
-  // Store RAPIER namespace for later use
-  window.RAPIER = rapier;
+  try {
+    // Initialize RAPIER
+    rapier = await RAPIER();
+    
+    // Create a physics world
+    world = new rapier.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
+    
+    // Ground
+    const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0);
+    world.createCollider(groundColliderDesc);
+    
+    physicsInitialized = true;
+    console.log("Physics initialized successfully");
+  } catch (error) {
+    console.error("Error initializing physics:", error);
+  }
 }
 
 // Character and animations
@@ -71,11 +74,11 @@ function createTemporaryCapybara() {
   scene.add(character);
   
   // Create physics body for character
-  const rigidBodyDesc = window.RAPIER.RigidBodyDesc.dynamic()
+  const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
     .setTranslation(0, 1, 0);
   characterBody = world.createRigidBody(rigidBodyDesc);
   
-  const characterColliderDesc = window.RAPIER.ColliderDesc.capsule(0.5, 0.3);
+  const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
   world.createCollider(characterColliderDesc, characterBody);
 }
 
@@ -83,25 +86,25 @@ function createTemporaryCapybara() {
 async function loadModels() {
   try {
     // Load the capybara model
-    const characterModel = await loader.loadAsync('/character/capybara.glb');
+    const characterModel = await loader.loadAsync('./character/capybara.glb');
     character = characterModel.scene;
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
     scene.add(character);
     
     // Create physics body for character
-    const rigidBodyDesc = window.RAPIER.RigidBodyDesc.dynamic()
+    const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
       .setTranslation(0, 1, 0);
     characterBody = world.createRigidBody(rigidBodyDesc);
     
-    const characterColliderDesc = window.RAPIER.ColliderDesc.capsule(0.5, 0.3);
+    const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
     world.createCollider(characterColliderDesc, characterBody);
     
     // Load animations
     mixer = new THREE.AnimationMixer(character);
     
-    const idleModel = await loader.loadAsync('/animations/idle.glb');
-    const walkModel = await loader.loadAsync('/animations/walk.glb');
+    const idleModel = await loader.loadAsync('./animations/idle.glb');
+    const walkModel = await loader.loadAsync('./animations/walk.glb');
     
     idleAction = mixer.clipAction(idleModel.animations[0]);
     walkAction = mixer.clipAction(walkModel.animations[0]);
@@ -120,12 +123,18 @@ function createGround() {
   const groundMat = new THREE.MeshStandardMaterial({ 
     color: 0x7CFC00, // Lawn green
     roughness: 0.8,
-    metalness: 0.2
+    metalness: 0.2,
+    side: THREE.DoubleSide
   });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0;
   ground.receiveShadow = true;
   scene.add(ground);
+  
+  // Add a grid helper for reference
+  const gridHelper = new THREE.GridHelper(200, 50);
+  scene.add(gridHelper);
 }
 
 // Input handling
@@ -163,7 +172,7 @@ function updateCharacter(delta) {
   
   // Check if grounded
   const position = characterBody.translation();
-  const ray = new window.RAPIER.Ray(
+  const ray = new rapier.Ray(
     { x: position.x, y: position.y, z: position.z },
     { x: 0, y: -1, z: 0 }
   );
@@ -244,15 +253,27 @@ function animate() {
 
 // Initialize and start
 async function init() {
-  await initPhysics();
-  createGround();
-  await loadModels();
-  
-  // Set initial camera position
-  camera.position.set(0, 5, 10);
-  camera.lookAt(0, 0, 0);
-  
-  animate();
+  try {
+    // Set initial camera position
+    camera.position.set(0, 5, 10);
+    camera.lookAt(0, 0, 0);
+    
+    // Initialize physics first
+    await initPhysics();
+    
+    // Create ground
+    createGround();
+    
+    // Load models
+    await loadModels();
+    
+    // Start animation loop
+    animate();
+    
+    console.log("Initialization complete");
+  } catch (error) {
+    console.error("Error during initialization:", error);
+  }
 }
 
 init();
@@ -262,4 +283,4 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-}); 
+});
