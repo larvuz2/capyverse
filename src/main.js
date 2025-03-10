@@ -30,6 +30,8 @@ class ThirdPersonCamera {
     this.target = target;
     this.settings = settings;
     this.rotationAngle = 0; // Track camera rotation around character
+    this.currentPosition = new THREE.Vector3(); // Current camera position
+    this.currentLookAt = new THREE.Vector3(); // Current lookAt point
   }
   
   updatePosition() {
@@ -43,24 +45,66 @@ class ThirdPersonCamera {
     const offsetX = Math.sin(this.rotationAngle) * this.settings.distance;
     const offsetZ = Math.cos(this.rotationAngle) * this.settings.distance;
     
-    // Set camera position relative to character
-    this.camera.position.set(
+    // Calculate the desired camera position
+    const desiredPosition = new THREE.Vector3(
       targetPosition.x + offsetX,
       targetPosition.y + this.settings.height,
       targetPosition.z + offsetZ
     );
     
-    // Look at the character's position plus the lookAtHeight offset
-    this.camera.lookAt(
+    // Calculate the desired lookAt point
+    const desiredLookAt = new THREE.Vector3(
       targetPosition.x,
       targetPosition.y + this.settings.lookAtHeight,
       targetPosition.z
     );
+    
+    // Initialize current positions if they're at origin (first frame)
+    if (this.currentPosition.length() === 0) {
+      this.currentPosition.copy(desiredPosition);
+    }
+    
+    if (this.currentLookAt.length() === 0) {
+      this.currentLookAt.copy(desiredLookAt);
+    }
+    
+    // Smoothly interpolate between current and desired positions
+    this.currentPosition.lerp(desiredPosition, this.settings.damping);
+    this.currentLookAt.lerp(desiredLookAt, this.settings.damping);
+    
+    // Apply the calculated positions
+    this.camera.position.copy(this.currentPosition);
+    this.camera.lookAt(this.currentLookAt);
   }
   
   // Rotate camera around character
   rotateAroundTarget(angleChange) {
     this.rotationAngle += angleChange;
+  }
+  
+  // Force immediate update without smoothing (for teleports or initial positioning)
+  forceUpdate() {
+    if (!this.target) return;
+    
+    const targetPosition = this.target.position.clone();
+    
+    const offsetX = Math.sin(this.rotationAngle) * this.settings.distance;
+    const offsetZ = Math.cos(this.rotationAngle) * this.settings.distance;
+    
+    this.currentPosition.set(
+      targetPosition.x + offsetX,
+      targetPosition.y + this.settings.height,
+      targetPosition.z + offsetZ
+    );
+    
+    this.currentLookAt.set(
+      targetPosition.x,
+      targetPosition.y + this.settings.lookAtHeight,
+      targetPosition.z
+    );
+    
+    this.camera.position.copy(this.currentPosition);
+    this.camera.lookAt(this.currentLookAt);
   }
 }
 
@@ -139,6 +183,7 @@ async function loadModels() {
     character = characterModel.scene;
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
+    character.position.set(0, 1, 0);
     scene.add(character);
     
     // Create physics body for character
@@ -159,6 +204,8 @@ async function loadModels() {
     walkAction = mixer.clipAction(walkModel.animations[0]);
     activeAction = idleAction;
     idleAction.play();
+    
+    console.log("Models loaded successfully");
   } catch (error) {
     console.error("Error loading models:", error);
     // Fallback to temporary capybara if loading fails
@@ -214,7 +261,8 @@ document.addEventListener('keyup', (e) => {
 // Character controller
 const moveSpeed = 5;
 const jumpForce = 10;
-let isGrounded = false;
+let velocity = new THREE.Vector3();
+let isGrounded = true;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 let thirdPersonCamera; // Reference to our camera controller
 
@@ -287,9 +335,6 @@ function updateCharacter(delta) {
     if (keys.e) {
       thirdPersonCamera.rotateAroundTarget(-cameraSettings.rotationSpeed);
     }
-    
-    // Update camera to follow character
-    thirdPersonCamera.updatePosition();
   }
 }
 
@@ -300,15 +345,15 @@ function setupGUI() {
   
   // Add controls with onChange handlers to immediately update camera
   cameraFolder.add(cameraSettings, 'distance', 0.1, 30).name('Distance').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.updatePosition();
+    if (thirdPersonCamera) thirdPersonCamera.forceUpdate();
   });
   
   cameraFolder.add(cameraSettings, 'height', 0.1, 20).name('Height').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.updatePosition();
+    if (thirdPersonCamera) thirdPersonCamera.forceUpdate();
   });
   
   cameraFolder.add(cameraSettings, 'lookAtHeight', 0, 5).name('Look At Height').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.updatePosition();
+    if (thirdPersonCamera) thirdPersonCamera.forceUpdate();
   });
   
   cameraFolder.add(cameraSettings, 'damping', 0.01, 0.5).name('Smoothing');
@@ -366,7 +411,7 @@ async function init() {
     thirdPersonCamera = new ThirdPersonCamera(camera, character, cameraSettings);
     
     // Initial camera update to position correctly
-    thirdPersonCamera.updatePosition();
+    thirdPersonCamera.forceUpdate();
     
     // Setup GUI controls
     setupGUI();
