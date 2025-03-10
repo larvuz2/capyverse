@@ -29,57 +29,38 @@ class ThirdPersonCamera {
     this.camera = camera;
     this.target = target;
     this.settings = settings;
-    
-    // Current camera position and target
-    this.currentPosition = new THREE.Vector3();
-    this.currentLookAt = new THREE.Vector3();
-    
-    // Initialize position
-    this.updatePosition(true);
+    this.rotationAngle = 0; // Track camera rotation around character
   }
   
-  updatePosition(forceUpdate = false) {
+  updatePosition() {
     if (!this.target) return;
     
-    // Calculate ideal camera position
-    const targetPosition = new THREE.Vector3().copy(this.target.position);
+    // Get the character's current position
+    const targetPosition = this.target.position.clone();
     
-    // Calculate camera position based on distance, height and rotation
-    const idealOffset = new THREE.Vector3(
-      Math.sin(this.settings.rotationOffset) * this.settings.distance,
-      this.settings.height,
-      Math.cos(this.settings.rotationOffset) * this.settings.distance
+    // Calculate camera position based on distance, height and rotation angle
+    // Using simple trigonometry to position the camera at the correct distance and angle
+    const offsetX = Math.sin(this.rotationAngle) * this.settings.distance;
+    const offsetZ = Math.cos(this.rotationAngle) * this.settings.distance;
+    
+    // Set camera position relative to character
+    this.camera.position.set(
+      targetPosition.x + offsetX,
+      targetPosition.y + this.settings.height,
+      targetPosition.z + offsetZ
     );
     
-    // Calculate look-at point with height offset
-    const idealLookAt = new THREE.Vector3(
+    // Look at the character's position plus the lookAtHeight offset
+    this.camera.lookAt(
       targetPosition.x,
       targetPosition.y + this.settings.lookAtHeight,
       targetPosition.z
     );
-    
-    // Apply ideal offset to target position
-    idealOffset.add(targetPosition);
-    
-    // Apply damping for smooth camera movement
-    if (forceUpdate) {
-      this.currentPosition.copy(idealOffset);
-      this.currentLookAt.copy(idealLookAt);
-    } else {
-      // Use higher damping factor for following character
-      const followDamping = Math.min(1.0, this.settings.damping * 3);
-      this.currentPosition.lerp(idealOffset, followDamping);
-      this.currentLookAt.lerp(idealLookAt, followDamping);
-    }
-    
-    // Update camera position and lookAt
-    this.camera.position.copy(this.currentPosition);
-    this.camera.lookAt(this.currentLookAt);
   }
   
   // Rotate camera around character
   rotateAroundTarget(angleChange) {
-    this.settings.rotationOffset += angleChange;
+    this.rotationAngle += angleChange;
   }
 }
 
@@ -307,8 +288,8 @@ function updateCharacter(delta) {
       thirdPersonCamera.rotateAroundTarget(-cameraSettings.rotationSpeed);
     }
     
-    // Force update camera position to always follow character
-    thirdPersonCamera.updatePosition(true);
+    // Update camera to follow character
+    thirdPersonCamera.updatePosition();
   }
 }
 
@@ -319,15 +300,15 @@ function setupGUI() {
   
   // Add controls with onChange handlers to immediately update camera
   cameraFolder.add(cameraSettings, 'distance', 0.1, 30).name('Distance').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.updatePosition(true);
+    if (thirdPersonCamera) thirdPersonCamera.updatePosition();
   });
   
   cameraFolder.add(cameraSettings, 'height', 0.1, 20).name('Height').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.updatePosition(true);
+    if (thirdPersonCamera) thirdPersonCamera.updatePosition();
   });
   
   cameraFolder.add(cameraSettings, 'lookAtHeight', 0, 5).name('Look At Height').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.updatePosition(true);
+    if (thirdPersonCamera) thirdPersonCamera.updatePosition();
   });
   
   cameraFolder.add(cameraSettings, 'damping', 0.01, 0.5).name('Smoothing');
@@ -354,6 +335,11 @@ function animate() {
     world.step();
     if (mixer) mixer.update(delta);
     updateCharacter(delta);
+    
+    // Always update camera position to follow character
+    if (thirdPersonCamera && character) {
+      thirdPersonCamera.updatePosition();
+    }
   }
   
   controls.update();
@@ -378,6 +364,9 @@ async function init() {
     
     // Setup third-person camera
     thirdPersonCamera = new ThirdPersonCamera(camera, character, cameraSettings);
+    
+    // Initial camera update to position correctly
+    thirdPersonCamera.updatePosition();
     
     // Setup GUI controls
     setupGUI();
