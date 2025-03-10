@@ -14,7 +14,8 @@ const DEFAULT_PARAMS = {
   offsetX: 0,
   offsetZ: 0,            // Changed to 0 to position camera directly behind
   lookAhead: 0.5,
-  damping: 0.1
+  damping: 0.1,
+  characterDistance: 3   // Distance from character (horizontal distance)
 };
 
 class ThirdPersonCamera {
@@ -50,6 +51,9 @@ class ThirdPersonCamera {
       this.params.minHeight, 
       this.params.maxHeight, 
       0.1).name('Height').onChange(() => this.updateImmediately());
+    
+    gui.add(this.params, 'characterDistance', 
+      1, 10, 0.1).name('Distance to Character').onChange(() => this.updateImmediately());
     
     gui.add(this.params, 'followSpeed', 
       1, 10, 0.1).name('Follow Speed');
@@ -94,12 +98,15 @@ class ThirdPersonCamera {
       direction.applyQuaternion(this.target.quaternion);
     }
 
-    // Calculate offset
+    // Calculate offset with separate height and distance to character
     const offset = new THREE.Vector3(
       this.params.offsetX,
       this.params.height,
-      this.params.offsetZ - this.params.distance
+      -this.params.characterDistance
     );
+    
+    // Rotate the offset based on character rotation
+    offset.applyQuaternion(this.target.quaternion);
     
     // Calculate desired camera position
     this.desiredPosition.copy(targetPos)
