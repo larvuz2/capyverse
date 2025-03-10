@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import RAPIER from '@dimforge/rapier3d/rapier';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -35,30 +34,6 @@ directionalLight.shadow.camera.top = 20;
 directionalLight.shadow.camera.bottom = -20;
 scene.add(directionalLight);
 
-// Physics setup
-let world, characterBody;
-let physicsInitialized = false;
-let rapier;
-
-async function initPhysics() {
-  try {
-    // Initialize RAPIER
-    rapier = await RAPIER();
-    
-    // Create a physics world
-    world = new rapier.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
-    
-    // Ground
-    const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0);
-    world.createCollider(groundColliderDesc);
-    
-    physicsInitialized = true;
-    console.log("Physics initialized successfully");
-  } catch (error) {
-    console.error("Error initializing physics:", error);
-  }
-}
-
 // Character and animations
 let mixer, idleAction, walkAction, activeAction;
 let character;
@@ -72,14 +47,6 @@ function createTemporaryCapybara() {
   character.castShadow = true;
   character.position.set(0, 1, 0);
   scene.add(character);
-  
-  // Create physics body for character
-  const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
-    .setTranslation(0, 1, 0);
-  characterBody = world.createRigidBody(rigidBodyDesc);
-  
-  const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
-  world.createCollider(characterColliderDesc, characterBody);
 }
 
 // Load character and animations
@@ -90,15 +57,8 @@ async function loadModels() {
     character = characterModel.scene;
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
+    character.position.set(0, 1, 0);
     scene.add(character);
-    
-    // Create physics body for character
-    const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
-      .setTranslation(0, 1, 0);
-    characterBody = world.createRigidBody(rigidBodyDesc);
-    
-    const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
-    world.createCollider(characterColliderDesc, characterBody);
     
     // Load animations
     mixer = new THREE.AnimationMixer(character);
@@ -110,6 +70,8 @@ async function loadModels() {
     walkAction = mixer.clipAction(walkModel.animations[0]);
     activeAction = idleAction;
     idleAction.play();
+    
+    console.log("Models loaded successfully");
   } catch (error) {
     console.error("Error loading models:", error);
     // Fallback to temporary capybara if loading fails
@@ -161,24 +123,15 @@ document.addEventListener('keyup', (e) => {
 // Character controller
 const moveSpeed = 5;
 const jumpForce = 10;
-let isGrounded = false;
+let velocity = new THREE.Vector3();
+let isGrounded = true;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 
 function updateCharacter(delta) {
-  if (!characterBody) return;
+  if (!character) return;
   
-  const velocity = characterBody.linvel();
   let movement = new THREE.Vector3();
   
-  // Check if grounded
-  const position = characterBody.translation();
-  const ray = new rapier.Ray(
-    { x: position.x, y: position.y, z: position.z },
-    { x: 0, y: -1, z: 0 }
-  );
-  const hit = world.castRay(ray, 1.1, true);
-  isGrounded = hit !== null;
-
   // Movement
   if (keys.w) movement.z -= 1;
   if (keys.s) movement.z += 1;
@@ -186,7 +139,7 @@ function updateCharacter(delta) {
   if (keys.d) movement.x += 1;
   
   if (movement.length() > 0) {
-    movement.normalize().multiplyScalar(moveSpeed);
+    movement.normalize().multiplyScalar(moveSpeed * delta);
     lastDirection.copy(movement).normalize();
     
     // Switch to walk animation
@@ -205,19 +158,27 @@ function updateCharacter(delta) {
   }
 
   // Apply movement
-  characterBody.setLinvel(
-    { x: movement.x, y: velocity.y, z: movement.z },
-    true
-  );
-
-  // Jump
-  if (keys.space && isGrounded) {
-    characterBody.setLinvel({ x: velocity.x, y: jumpForce, z: velocity.z }, true);
+  character.position.x += movement.x;
+  character.position.z += movement.z;
+  
+  // Simple gravity and jumping
+  if (isGrounded) {
+    velocity.y = 0;
+    if (keys.space) {
+      velocity.y = jumpForce;
+      isGrounded = false;
+    }
+  } else {
+    velocity.y -= 9.8 * 2 * delta; // Heavy gravity (2x normal)
   }
-
-  // Update character position
-  const pos = characterBody.translation();
-  character.position.set(pos.x, pos.y - 0.5, pos.z); // Adjust Y to account for capsule height
+  
+  character.position.y += velocity.y * delta;
+  
+  // Simple ground collision
+  if (character.position.y < 1) {
+    character.position.y = 1;
+    isGrounded = true;
+  }
   
   // Rotate character to face movement direction
   if (movement.length() > 0) {
@@ -227,11 +188,11 @@ function updateCharacter(delta) {
   
   // Camera follow
   camera.position.set(
-    pos.x + lastDirection.x * -10, 
-    pos.y + 5, 
-    pos.z + lastDirection.z * -10
+    character.position.x + lastDirection.x * -10, 
+    character.position.y + 5, 
+    character.position.z + lastDirection.z * -10
   );
-  camera.lookAt(pos.x, pos.y + 1, pos.z);
+  camera.lookAt(character.position.x, character.position.y + 1, character.position.z);
 }
 
 // Animation loop
@@ -241,11 +202,8 @@ function animate() {
   
   const delta = clock.getDelta();
   
-  if (physicsInitialized) {
-    world.step();
-    if (mixer) mixer.update(delta);
-    updateCharacter(delta);
-  }
+  if (mixer) mixer.update(delta);
+  updateCharacter(delta);
   
   controls.update();
   renderer.render(scene, camera);
@@ -257,9 +215,6 @@ async function init() {
     // Set initial camera position
     camera.position.set(0, 5, 10);
     camera.lookAt(0, 0, 0);
-    
-    // Initialize physics first
-    await initPhysics();
     
     // Create ground
     createGround();
