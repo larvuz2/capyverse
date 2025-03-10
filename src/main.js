@@ -15,96 +15,40 @@ document.getElementById('container').appendChild(renderer.domElement);
 
 // Third-person camera settings
 const cameraSettings = {
-  distance: 3.1694,    // Distance from the character
-  height: 1.1741,      // Height above the character
-  rotationOffset: 0,   // Rotation offset around character (in radians)
-  lookAtHeight: 0.515, // Height offset for lookAt point
-  damping: 0.05,       // Camera movement smoothing factor
-  rotationSpeed: 0.01  // How fast the camera rotates around character
+  positionX: 0,       // X position of the static camera
+  positionY: 10,      // Y position of the static camera (height)
+  positionZ: 20,      // Z position of the static camera (distance)
+  lookAtX: 0,         // X position to look at
+  lookAtY: 0,         // Y position to look at
+  lookAtZ: 0          // Z position to look at
 };
 
-// Third-person camera controller
-class ThirdPersonCamera {
-  constructor(camera, target, settings) {
+// Static camera controller
+class StaticCamera {
+  constructor(camera, settings) {
     this.camera = camera;
-    this.target = target;
     this.settings = settings;
-    this.rotationAngle = 0; // Track camera rotation around character
-    this.currentPosition = new THREE.Vector3(); // Current camera position
-    this.currentLookAt = new THREE.Vector3(); // Current lookAt point
+    this.setupCamera();
   }
   
-  updatePosition() {
-    if (!this.target) return;
-    
-    // Get the character's current position
-    const targetPosition = this.target.position.clone();
-    
-    // Calculate camera position based on distance, height and rotation angle
-    // Using simple trigonometry to position the camera at the correct distance and angle
-    const offsetX = Math.sin(this.rotationAngle) * this.settings.distance;
-    const offsetZ = Math.cos(this.rotationAngle) * this.settings.distance;
-    
-    // Calculate the desired camera position
-    const desiredPosition = new THREE.Vector3(
-      targetPosition.x + offsetX,
-      targetPosition.y + this.settings.height,
-      targetPosition.z + offsetZ
+  // Set up the camera in a fixed position
+  setupCamera() {
+    this.camera.position.set(
+      this.settings.positionX,
+      this.settings.positionY,
+      this.settings.positionZ
     );
     
-    // Calculate the desired lookAt point
-    const desiredLookAt = new THREE.Vector3(
-      targetPosition.x,
-      targetPosition.y + this.settings.lookAtHeight,
-      targetPosition.z
+    this.camera.lookAt(
+      this.settings.lookAtX,
+      this.settings.lookAtY,
+      this.settings.lookAtZ
     );
-    
-    // Initialize current positions if they're at origin (first frame)
-    if (this.currentPosition.length() === 0) {
-      this.currentPosition.copy(desiredPosition);
-    }
-    
-    if (this.currentLookAt.length() === 0) {
-      this.currentLookAt.copy(desiredLookAt);
-    }
-    
-    // Smoothly interpolate between current and desired positions
-    this.currentPosition.lerp(desiredPosition, this.settings.damping);
-    this.currentLookAt.lerp(desiredLookAt, this.settings.damping);
-    
-    // Apply the calculated positions
-    this.camera.position.copy(this.currentPosition);
-    this.camera.lookAt(this.currentLookAt);
   }
   
-  // Rotate camera around character
-  rotateAroundTarget(angleChange) {
-    this.rotationAngle += angleChange;
-  }
-  
-  // Force immediate update without smoothing (for teleports or initial positioning)
-  forceUpdate() {
-    if (!this.target) return;
-    
-    const targetPosition = this.target.position.clone();
-    
-    const offsetX = Math.sin(this.rotationAngle) * this.settings.distance;
-    const offsetZ = Math.cos(this.rotationAngle) * this.settings.distance;
-    
-    this.currentPosition.set(
-      targetPosition.x + offsetX,
-      targetPosition.y + this.settings.height,
-      targetPosition.z + offsetZ
-    );
-    
-    this.currentLookAt.set(
-      targetPosition.x,
-      targetPosition.y + this.settings.lookAtHeight,
-      targetPosition.z
-    );
-    
-    this.camera.position.copy(this.currentPosition);
-    this.camera.lookAt(this.currentLookAt);
+  // Update camera settings if they change
+  updateSettings() {
+    this.setupCamera();
   }
 }
 
@@ -234,7 +178,7 @@ function createGround() {
 }
 
 // Input handling
-const keys = { w: false, a: false, s: false, d: false, space: false, q: false, e: false };
+const keys = { w: false, a: false, s: false, d: false, space: false };
 document.addEventListener('keydown', (e) => {
   switch(e.key.toLowerCase()) {
     case 'w': keys.w = true; break;
@@ -242,8 +186,6 @@ document.addEventListener('keydown', (e) => {
     case 's': keys.s = true; break;
     case 'd': keys.d = true; break;
     case ' ': keys.space = true; break;
-    case 'q': keys.q = true; break;
-    case 'e': keys.e = true; break;
   }
 });
 document.addEventListener('keyup', (e) => {
@@ -253,8 +195,6 @@ document.addEventListener('keyup', (e) => {
     case 's': keys.s = false; break;
     case 'd': keys.d = false; break;
     case ' ': keys.space = false; break;
-    case 'q': keys.q = false; break;
-    case 'e': keys.e = false; break;
   }
 });
 
@@ -264,7 +204,7 @@ const jumpForce = 10;
 let velocity = new THREE.Vector3();
 let isGrounded = true;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
-let thirdPersonCamera; // Reference to our camera controller
+let staticCamera; // Reference to our camera controller
 
 function updateCharacter(delta) {
   if (!characterBody) return;
@@ -326,47 +266,40 @@ function updateCharacter(delta) {
     const targetRotation = Math.atan2(movement.x, movement.z);
     character.rotation.y = targetRotation;
   }
-  
-  // Camera rotation with Q and E keys
-  if (thirdPersonCamera) {
-    if (keys.q) {
-      thirdPersonCamera.rotateAroundTarget(cameraSettings.rotationSpeed);
-    }
-    if (keys.e) {
-      thirdPersonCamera.rotateAroundTarget(-cameraSettings.rotationSpeed);
-    }
-  }
 }
 
 // Setup GUI
 function setupGUI() {
   const gui = new GUI();
-  const cameraFolder = gui.addFolder('Third Person Camera');
+  const cameraFolder = gui.addFolder('Static Camera');
   
-  // Add controls with onChange handlers to immediately update camera
-  cameraFolder.add(cameraSettings, 'distance', 0.1, 30).name('Distance').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.forceUpdate();
+  // Add controls for camera position
+  cameraFolder.add(cameraSettings, 'positionX', -50, 50).name('Camera X').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
   });
   
-  cameraFolder.add(cameraSettings, 'height', 0.1, 20).name('Height').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.forceUpdate();
+  cameraFolder.add(cameraSettings, 'positionY', 1, 50).name('Camera Y').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
   });
   
-  cameraFolder.add(cameraSettings, 'lookAtHeight', 0, 5).name('Look At Height').onChange(() => {
-    if (thirdPersonCamera) thirdPersonCamera.forceUpdate();
+  cameraFolder.add(cameraSettings, 'positionZ', -50, 50).name('Camera Z').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
   });
   
-  cameraFolder.add(cameraSettings, 'damping', 0.01, 0.5).name('Smoothing');
+  // Add controls for lookAt point
+  cameraFolder.add(cameraSettings, 'lookAtX', -50, 50).name('Look At X').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
   
-  cameraFolder.add(cameraSettings, 'rotationSpeed', 0.001, 0.05).name('Rotation Speed');
+  cameraFolder.add(cameraSettings, 'lookAtY', 0, 20).name('Look At Y').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
+  
+  cameraFolder.add(cameraSettings, 'lookAtZ', -50, 50).name('Look At Z').onChange(() => {
+    if (staticCamera) staticCamera.updateSettings();
+  });
   
   cameraFolder.open();
-  
-  // Add instructions for camera rotation
-  const infoElement = document.getElementById('info');
-  const cameraInstructions = document.createElement('p');
-  cameraInstructions.innerHTML = 'Camera Controls:<br>Q - Rotate Left<br>E - Rotate Right';
-  infoElement.appendChild(cameraInstructions);
 }
 
 // Animation loop
@@ -381,10 +314,7 @@ function animate() {
     if (mixer) mixer.update(delta);
     updateCharacter(delta);
     
-    // Always update camera position to follow character
-    if (thirdPersonCamera && character) {
-      thirdPersonCamera.updatePosition();
-    }
+    // No camera updates needed for static camera
   }
   
   controls.update();
@@ -394,10 +324,6 @@ function animate() {
 // Initialize and start
 async function init() {
   try {
-    // Set initial camera position
-    camera.position.set(0, 5, 10);
-    camera.lookAt(0, 0, 0);
-    
     // Initialize physics first
     await initPhysics();
     
@@ -407,11 +333,8 @@ async function init() {
     // Load models
     await loadModels();
     
-    // Setup third-person camera
-    thirdPersonCamera = new ThirdPersonCamera(camera, character, cameraSettings);
-    
-    // Initial camera update to position correctly
-    thirdPersonCamera.forceUpdate();
+    // Setup static camera
+    staticCamera = new StaticCamera(camera, cameraSettings);
     
     // Setup GUI controls
     setupGUI();
