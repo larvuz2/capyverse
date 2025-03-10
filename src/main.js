@@ -35,7 +35,7 @@ class ThirdPersonCamera {
     this.currentLookAt = new THREE.Vector3();
     
     // Initialize position
-    this.updatePosition();
+    this.updatePosition(true);
   }
   
   updatePosition(forceUpdate = false) {
@@ -66,8 +66,10 @@ class ThirdPersonCamera {
       this.currentPosition.copy(idealOffset);
       this.currentLookAt.copy(idealLookAt);
     } else {
-      this.currentPosition.lerp(idealOffset, this.settings.damping);
-      this.currentLookAt.lerp(idealLookAt, this.settings.damping);
+      // Use higher damping factor for following character
+      const followDamping = Math.min(1.0, this.settings.damping * 3);
+      this.currentPosition.lerp(idealOffset, followDamping);
+      this.currentLookAt.lerp(idealLookAt, followDamping);
     }
     
     // Update camera position and lookAt
@@ -305,8 +307,8 @@ function updateCharacter(delta) {
       thirdPersonCamera.rotateAroundTarget(-cameraSettings.rotationSpeed);
     }
     
-    // Update camera position
-    thirdPersonCamera.updatePosition();
+    // Force update camera position to always follow character
+    thirdPersonCamera.updatePosition(true);
   }
 }
 
