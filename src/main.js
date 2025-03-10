@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import RAPIER from '@dimforge/rapier3d';
+import RAPIER from '@dimforge/rapier3d/rapier';
+import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -11,6 +12,74 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.getElementById('container').appendChild(renderer.domElement);
+
+// Third-person camera settings
+const cameraSettings = {
+  distance: 10,       // Distance from the character
+  height: 5,          // Height above the character
+  rotationOffset: 0,  // Rotation offset around character (in radians)
+  lookAtHeight: 1,    // Height offset for lookAt point
+  damping: 0.05,      // Camera movement smoothing factor
+  rotationSpeed: 0.01 // How fast the camera rotates around character
+};
+
+// Third-person camera controller
+class ThirdPersonCamera {
+  constructor(camera, target, settings) {
+    this.camera = camera;
+    this.target = target;
+    this.settings = settings;
+    
+    // Current camera position and target
+    this.currentPosition = new THREE.Vector3();
+    this.currentLookAt = new THREE.Vector3();
+    
+    // Initialize position
+    this.updatePosition();
+  }
+  
+  updatePosition(forceUpdate = false) {
+    if (!this.target) return;
+    
+    // Calculate ideal camera position
+    const targetPosition = new THREE.Vector3().copy(this.target.position);
+    
+    // Calculate camera position based on distance, height and rotation
+    const idealOffset = new THREE.Vector3(
+      Math.sin(this.settings.rotationOffset) * this.settings.distance,
+      this.settings.height,
+      Math.cos(this.settings.rotationOffset) * this.settings.distance
+    );
+    
+    // Calculate look-at point with height offset
+    const idealLookAt = new THREE.Vector3(
+      targetPosition.x,
+      targetPosition.y + this.settings.lookAtHeight,
+      targetPosition.z
+    );
+    
+    // Apply ideal offset to target position
+    idealOffset.add(targetPosition);
+    
+    // Apply damping for smooth camera movement
+    if (forceUpdate) {
+      this.currentPosition.copy(idealOffset);
+      this.currentLookAt.copy(idealLookAt);
+    } else {
+      this.currentPosition.lerp(idealOffset, this.settings.damping);
+      this.currentLookAt.lerp(idealLookAt, this.settings.damping);
+    }
+    
+    // Update camera position and lookAt
+    this.camera.position.copy(this.currentPosition);
+    this.camera.lookAt(this.currentLookAt);
+  }
+  
+  // Rotate camera around character
+  rotateAroundTarget(angleChange) {
+    this.settings.rotationOffset += angleChange;
+  }
+}
 
 // Orbit controls for development
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -38,22 +107,25 @@ scene.add(directionalLight);
 // Physics setup
 let world, characterBody;
 let physicsInitialized = false;
+let rapier;
 
 async function initPhysics() {
-  // Wait for RAPIER to initialize
-  const rapier = await RAPIER();
-  
-  // Create a physics world
-  world = new rapier.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
-  
-  // Ground
-  const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0);
-  world.createCollider(groundColliderDesc);
-  
-  physicsInitialized = true;
-  
-  // Store RAPIER namespace for later use
-  window.RAPIER = rapier;
+  try {
+    // Initialize RAPIER
+    rapier = await RAPIER();
+    
+    // Create a physics world
+    world = new rapier.World({ x: 0.0, y: -19.62, z: 0.0 }); // Heavy gravity (2x normal)
+    
+    // Ground
+    const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0);
+    world.createCollider(groundColliderDesc);
+    
+    physicsInitialized = true;
+    console.log("Physics initialized successfully");
+  } catch (error) {
+    console.error("Error initializing physics:", error);
+  }
 }
 
 // Character and animations
@@ -71,11 +143,11 @@ function createTemporaryCapybara() {
   scene.add(character);
   
   // Create physics body for character
-  const rigidBodyDesc = window.RAPIER.RigidBodyDesc.dynamic()
+  const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
     .setTranslation(0, 1, 0);
   characterBody = world.createRigidBody(rigidBodyDesc);
   
-  const characterColliderDesc = window.RAPIER.ColliderDesc.capsule(0.5, 0.3);
+  const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
   world.createCollider(characterColliderDesc, characterBody);
 }
 
@@ -83,25 +155,25 @@ function createTemporaryCapybara() {
 async function loadModels() {
   try {
     // Load the capybara model
-    const characterModel = await loader.loadAsync('/character/capybara.glb');
+    const characterModel = await loader.loadAsync('./character/capybara.glb');
     character = characterModel.scene;
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
     scene.add(character);
     
     // Create physics body for character
-    const rigidBodyDesc = window.RAPIER.RigidBodyDesc.dynamic()
+    const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
       .setTranslation(0, 1, 0);
     characterBody = world.createRigidBody(rigidBodyDesc);
     
-    const characterColliderDesc = window.RAPIER.ColliderDesc.capsule(0.5, 0.3);
+    const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
     world.createCollider(characterColliderDesc, characterBody);
     
     // Load animations
     mixer = new THREE.AnimationMixer(character);
     
-    const idleModel = await loader.loadAsync('/animations/idle.glb');
-    const walkModel = await loader.loadAsync('/animations/walk.glb');
+    const idleModel = await loader.loadAsync('./animations/idle.glb');
+    const walkModel = await loader.loadAsync('./animations/walk.glb');
     
     idleAction = mixer.clipAction(idleModel.animations[0]);
     walkAction = mixer.clipAction(walkModel.animations[0]);
@@ -120,16 +192,22 @@ function createGround() {
   const groundMat = new THREE.MeshStandardMaterial({ 
     color: 0x7CFC00, // Lawn green
     roughness: 0.8,
-    metalness: 0.2
+    metalness: 0.2,
+    side: THREE.DoubleSide
   });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0;
   ground.receiveShadow = true;
   scene.add(ground);
+  
+  // Add a grid helper for reference
+  const gridHelper = new THREE.GridHelper(200, 50);
+  scene.add(gridHelper);
 }
 
 // Input handling
-const keys = { w: false, a: false, s: false, d: false, space: false };
+const keys = { w: false, a: false, s: false, d: false, space: false, q: false, e: false };
 document.addEventListener('keydown', (e) => {
   switch(e.key.toLowerCase()) {
     case 'w': keys.w = true; break;
@@ -137,6 +215,8 @@ document.addEventListener('keydown', (e) => {
     case 's': keys.s = true; break;
     case 'd': keys.d = true; break;
     case ' ': keys.space = true; break;
+    case 'q': keys.q = true; break;
+    case 'e': keys.e = true; break;
   }
 });
 document.addEventListener('keyup', (e) => {
@@ -146,6 +226,8 @@ document.addEventListener('keyup', (e) => {
     case 's': keys.s = false; break;
     case 'd': keys.d = false; break;
     case ' ': keys.space = false; break;
+    case 'q': keys.q = false; break;
+    case 'e': keys.e = false; break;
   }
 });
 
@@ -154,6 +236,7 @@ const moveSpeed = 5;
 const jumpForce = 10;
 let isGrounded = false;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
+let thirdPersonCamera; // Reference to our camera controller
 
 function updateCharacter(delta) {
   if (!characterBody) return;
@@ -163,7 +246,7 @@ function updateCharacter(delta) {
   
   // Check if grounded
   const position = characterBody.translation();
-  const ray = new window.RAPIER.Ray(
+  const ray = new rapier.Ray(
     { x: position.x, y: position.y, z: position.z },
     { x: 0, y: -1, z: 0 }
   );
@@ -216,13 +299,38 @@ function updateCharacter(delta) {
     character.rotation.y = targetRotation;
   }
   
-  // Camera follow
-  camera.position.set(
-    pos.x + lastDirection.x * -10, 
-    pos.y + 5, 
-    pos.z + lastDirection.z * -10
-  );
-  camera.lookAt(pos.x, pos.y + 1, pos.z);
+  // Camera rotation with Q and E keys
+  if (thirdPersonCamera) {
+    if (keys.q) {
+      thirdPersonCamera.rotateAroundTarget(cameraSettings.rotationSpeed);
+    }
+    if (keys.e) {
+      thirdPersonCamera.rotateAroundTarget(-cameraSettings.rotationSpeed);
+    }
+    
+    // Update camera position
+    thirdPersonCamera.updatePosition();
+  }
+}
+
+// Setup GUI
+function setupGUI() {
+  const gui = new GUI();
+  const cameraFolder = gui.addFolder('Third Person Camera');
+  
+  cameraFolder.add(cameraSettings, 'distance', 3, 20).name('Distance');
+  cameraFolder.add(cameraSettings, 'height', 1, 15).name('Height');
+  cameraFolder.add(cameraSettings, 'lookAtHeight', 0, 5).name('Look At Height');
+  cameraFolder.add(cameraSettings, 'damping', 0.01, 0.5).name('Smoothing');
+  cameraFolder.add(cameraSettings, 'rotationSpeed', 0.001, 0.05).name('Rotation Speed');
+  
+  cameraFolder.open();
+  
+  // Add instructions for camera rotation
+  const infoElement = document.getElementById('info');
+  const cameraInstructions = document.createElement('p');
+  cameraInstructions.innerHTML = 'Camera Controls:<br>Q - Rotate Left<br>E - Rotate Right';
+  infoElement.appendChild(cameraInstructions);
 }
 
 // Animation loop
@@ -244,15 +352,33 @@ function animate() {
 
 // Initialize and start
 async function init() {
-  await initPhysics();
-  createGround();
-  await loadModels();
-  
-  // Set initial camera position
-  camera.position.set(0, 5, 10);
-  camera.lookAt(0, 0, 0);
-  
-  animate();
+  try {
+    // Set initial camera position
+    camera.position.set(0, 5, 10);
+    camera.lookAt(0, 0, 0);
+    
+    // Initialize physics first
+    await initPhysics();
+    
+    // Create ground
+    createGround();
+    
+    // Load models
+    await loadModels();
+    
+    // Setup third-person camera
+    thirdPersonCamera = new ThirdPersonCamera(camera, character, cameraSettings);
+    
+    // Setup GUI controls
+    setupGUI();
+    
+    // Start animation loop
+    animate();
+    
+    console.log("Initialization complete");
+  } catch (error) {
+    console.error("Error during initialization:", error);
+  }
 }
 
 init();

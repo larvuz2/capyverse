@@ -8,7 +8,8 @@ A 3D capybara character controller built with Three.js and Rapier physics.
 - WASD controls for movement
 - Space bar for jumping
 - Heavy gravity for realistic physics
-- Third-person camera that follows the character
+- Advanced third-person camera system with adjustable settings
+- GUI controls for camera customization
 
 ## Controls
 
@@ -17,6 +18,17 @@ A 3D capybara character controller built with Three.js and Rapier physics.
 - **S**: Move backward
 - **D**: Move right
 - **Space**: Jump
+- **Q**: Rotate camera left
+- **E**: Rotate camera right
+
+## Camera Settings
+
+The camera can be adjusted using the GUI panel:
+- **Distance**: How far the camera is from the character
+- **Height**: How high the camera is positioned above the character
+- **Look At Height**: Where the camera looks at (vertical offset)
+- **Smoothing**: How smoothly the camera follows the character
+- **Rotation Speed**: How quickly the camera rotates when using Q/E keys
 
 ## Development
 
@@ -53,6 +65,7 @@ npm run build
 - [Three.js](https://threejs.org/) - 3D library
 - [Rapier](https://rapier.rs/) - Physics engine
 - [Vite](https://vitejs.dev/) - Build tool
+- [lil-gui](https://lil-gui.georgealways.com/) - GUI controls
 
 ## License
 
