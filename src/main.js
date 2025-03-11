@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import StaticCamera from './StaticCamera.js';
+import ThirdPersonCamera from './ThirdPersonCamera.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -148,6 +149,16 @@ document.addEventListener('keydown', (e) => {
     case 's': keys.s = true; break;
     case 'd': keys.d = true; break;
     case ' ': keys.space = true; break;
+    case 'c': 
+      // Toggle between camera modes
+      if (activeCamera === 'static') {
+        activeCamera = 'thirdPerson';
+        console.log('Switched to third person camera');
+      } else {
+        activeCamera = 'static';
+        console.log('Switched to static camera');
+      }
+      break;
   }
 });
 document.addEventListener('keyup', (e) => {
@@ -169,7 +180,8 @@ let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 
 // Camera controllers
 let staticCamera; // Reference to static camera
-let activeCamera = 'static'; // Default to static camera
+let thirdPersonCamera; // Reference to third person camera
+let activeCamera = 'thirdPerson'; // Default to third person camera
 
 function updateCharacter(delta) {
   if (!characterBody) return;
@@ -231,6 +243,11 @@ function updateCharacter(delta) {
     const targetRotation = Math.atan2(movement.x, movement.z);
     character.rotation.y = targetRotation;
   }
+  
+  // Update active camera if it's the third person camera
+  if (activeCamera === 'thirdPerson' && thirdPersonCamera) {
+    thirdPersonCamera.update(delta);
+  }
 }
 
 // Animation loop
@@ -268,6 +285,11 @@ async function init() {
     
     // Setup cameras
     staticCamera = new StaticCamera(camera, scene);
+    
+    // Initialize third person camera after character is loaded
+    if (character) {
+      thirdPersonCamera = new ThirdPersonCamera(camera, scene, character);
+    }
     
     // Start animation loop
     animate();
