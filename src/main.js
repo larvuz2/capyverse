@@ -3,7 +3,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
-import ThirdPersonCamera from './ThirdPersonCamera.js';
 import StaticCamera from './StaticCamera.js';
 
 // Scene setup
@@ -169,7 +168,6 @@ let isGrounded = true;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 
 // Camera controllers
-let thirdPersonCamera; // Reference to our camera controller
 let staticCamera; // Reference to static camera
 let activeCamera = 'static'; // Default to static camera
 
@@ -246,11 +244,6 @@ function animate() {
     world.step();
     if (mixer) mixer.update(delta);
     updateCharacter(delta);
-    
-    // Update active camera
-    if (activeCamera === 'thirdPerson' && thirdPersonCamera && character) {
-      thirdPersonCamera.update(delta);
-    }
   }
   
   controls.update();
@@ -274,23 +267,7 @@ async function init() {
     await loadModels();
     
     // Setup cameras
-    thirdPersonCamera = new ThirdPersonCamera(camera, character, scene);
     staticCamera = new StaticCamera(camera, scene);
-    
-    // Setup camera selection GUI
-    const cameraGui = new GUI({ title: 'Camera Selection' });
-    const cameraOptions = {
-      cameraType: activeCamera
-    };
-    
-    cameraGui.add(cameraOptions, 'cameraType', ['static', 'thirdPerson'])
-      .name('Camera Type')
-      .onChange((value) => {
-        activeCamera = value;
-        if (value === 'static') {
-          staticCamera.update();
-        }
-      });
     
     // Start animation loop
     animate();
