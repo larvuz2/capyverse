@@ -10,19 +10,23 @@ class ThirdPersonCamera {
     // Default camera parameters
     this.params = {
       distance: 5,        // Distance behind the character
+      minDistance: 3,     // Minimum distance to maintain
       height: 2,          // Height above the character
       lookDownAngle: 15,  // Angle to look down at character (degrees)
       smoothFollow: 0.1,  // Smoothing factor (0-1)
       rotationSpeed: 0.5, // How quickly camera adjusts to character rotation
       offsetX: 0,         // Additional X offset
       offsetY: 0,         // Additional Y offset
-      offsetZ: 0          // Additional Z offset
+      offsetZ: 0,         // Additional Z offset
+      alwaysFollow: true  // Always follow character rotation
     };
     
     // Initialize helper variables
     this.currentPosition = new THREE.Vector3();
     this.desiredPosition = new THREE.Vector3();
     this.lookPosition = new THREE.Vector3();
+    this.lastTargetPosition = new THREE.Vector3();
+    this.lastValidCameraPosition = new THREE.Vector3(0, this.params.height, this.params.distance);
     
     // Setup GUI
     this.initGUI();
@@ -41,6 +45,10 @@ class ThirdPersonCamera {
       .name('Distance')
       .onChange(() => this.update());
     
+    cameraFolder.add(this.params, 'minDistance', 1, 5, 0.1)
+      .name('Min Distance')
+      .onChange(() => this.update());
+    
     cameraFolder.add(this.params, 'height', 0.5, 5, 0.1)
       .name('Height')
       .onChange(() => this.update());
@@ -55,6 +63,10 @@ class ThirdPersonCamera {
     
     cameraFolder.add(this.params, 'rotationSpeed', 0.1, 2, 0.1)
       .name('Rotation Speed')
+      .onChange(() => this.update());
+    
+    cameraFolder.add(this.params, 'alwaysFollow')
+      .name('Always Follow')
       .onChange(() => this.update());
     
     // Offset controls
@@ -79,14 +91,28 @@ class ThirdPersonCamera {
     // Get character position and direction
     const targetPosition = this.target.position.clone();
     
+    // Check if target has moved significantly
+    if (targetPosition.distanceTo(this.lastTargetPosition) > 0.01) {
+      this.lastTargetPosition.copy(targetPosition);
+    }
+    
     // Get the character's forward direction (based on rotation)
     const characterDirection = new THREE.Vector3(0, 0, -1);
     characterDirection.applyQuaternion(this.target.quaternion);
     
     // Calculate position behind character based on character's forward direction
-    this.desiredPosition.copy(targetPosition).sub(
-      characterDirection.clone().multiplyScalar(this.params.distance)
-    );
+    if (this.params.alwaysFollow) {
+      // Always follow character rotation
+      this.desiredPosition.copy(targetPosition).sub(
+        characterDirection.clone().multiplyScalar(this.params.distance)
+      );
+    } else {
+      // Fixed camera direction (only follows position)
+      const cameraDirection = new THREE.Vector3(0, 0, 1); // Default camera direction
+      this.desiredPosition.copy(targetPosition).add(
+        cameraDirection.multiplyScalar(this.params.distance)
+      );
+    }
     
     // Add height offset
     this.desiredPosition.y = targetPosition.y + this.params.height;
@@ -95,6 +121,18 @@ class ThirdPersonCamera {
     this.desiredPosition.x += this.params.offsetX;
     this.desiredPosition.y += this.params.offsetY;
     this.desiredPosition.z += this.params.offsetZ;
+    
+    // Ensure minimum distance is maintained
+    const distanceToTarget = this.desiredPosition.distanceTo(targetPosition);
+    if (distanceToTarget < this.params.minDistance) {
+      const direction = this.desiredPosition.clone().sub(targetPosition).normalize();
+      this.desiredPosition.copy(targetPosition).add(
+        direction.multiplyScalar(this.params.minDistance)
+      );
+    }
+    
+    // Store last valid camera position
+    this.lastValidCameraPosition.copy(this.desiredPosition);
   }
 
   smoothlyMoveToPosition(delta) {
