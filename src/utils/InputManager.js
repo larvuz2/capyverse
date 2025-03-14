@@ -1,113 +1,172 @@
 /**
- * InputManager.js
- * Handles user input for the third-person camera controls.
+ * Simplified InputManager.js
+ * Handles mouse input for the third-person camera with focus on reliability
  */
 
 class InputManager {
   constructor(domElement) {
-    this.domElement = domElement || document;
+    // Store reference to the DOM element
+    this.domElement = domElement || document.body;
     
-    // Mouse state tracking
-    this.isPointerLocked = false;
-    this.mouseX = 0;
-    this.mouseY = 0;
+    // Mouse movement tracking
     this.mouseDeltaX = 0;
     this.mouseDeltaY = 0;
-    this.previousMouseX = 0;
-    this.previousMouseY = 0;
     
-    // Settings
-    this.sensitivity = 0.15; // Slightly reduced for smoother control
-    this.invertY = false;    // Whether to invert Y-axis movement
-    this.damping = 0.85;     // Damping factor for mouse movement
+    // Pointer lock state
+    this.isPointerLocked = false;
     
-    // Bind event handlers
+    // Camera control settings
+    this.sensitivity = 0.003; // Default sensitivity (matched to ThirdPersonCamera expectations)
+    this.invertY = false;     // Option to invert Y axis
+    
+    // Status for user feedback
+    this.lockStatus = document.createElement('div');
+    this.lockStatus.style.position = 'absolute';
+    this.lockStatus.style.bottom = '10px';
+    this.lockStatus.style.width = '100%';
+    this.lockStatus.style.textAlign = 'center';
+    this.lockStatus.style.color = 'white';
+    this.lockStatus.style.fontFamily = 'Arial, sans-serif';
+    this.lockStatus.style.padding = '5px';
+    this.lockStatus.style.pointerEvents = 'none'; // Don't interfere with clicks
+    this.lockStatus.textContent = 'Click to control camera';
+    document.body.appendChild(this.lockStatus);
+    
+    // Bind methods to this instance
     this.onMouseMove = this.onMouseMove.bind(this);
     this.onPointerLockChange = this.onPointerLockChange.bind(this);
     this.onPointerLockError = this.onPointerLockError.bind(this);
+    this.onClick = this.onClick.bind(this);
     
-    // Initialize
+    // Set up event listeners
     this.setupEventListeners();
+    
+    console.log('Simplified InputManager initialized');
   }
   
+  /**
+   * Set up all required event listeners
+   */
   setupEventListeners() {
-    // Mouse movement event
-    this.domElement.addEventListener('mousemove', this.onMouseMove, false);
+    // Mouse movement
+    document.addEventListener('mousemove', this.onMouseMove, false);
     
     // Pointer lock events
     document.addEventListener('pointerlockchange', this.onPointerLockChange, false);
     document.addEventListener('pointerlockerror', this.onPointerLockError, false);
     
-    // Click to lock pointer
-    this.domElement.addEventListener('click', () => {
-      if (!this.isPointerLocked) {
-        this.lockPointer();
-      }
-    }, false);
-    
-    // Escape key to exit pointer lock
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && this.isPointerLocked) {
-        document.exitPointerLock();
-      }
-    }, false);
+    // Click to enable controls
+    this.domElement.addEventListener('click', this.onClick, false);
   }
   
-  lockPointer() {
-    this.domElement.requestPointerLock();
-  }
-  
+  /**
+   * Handle mouse movement events
+   */
   onMouseMove(event) {
     if (!this.isPointerLocked) return;
     
-    // Get mouse movement
-    this.mouseDeltaX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
-    this.mouseDeltaY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+    // Get raw movement values with cross-browser support
+    let movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+    let movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
     
     // Apply sensitivity
-    this.mouseDeltaX *= this.sensitivity;
-    this.mouseDeltaY *= this.sensitivity;
+    movementX *= this.sensitivity;
+    movementY *= this.sensitivity;
     
-    // Apply Y inversion if enabled
+    // Apply inversion if needed
     if (this.invertY) {
-      this.mouseDeltaY = -this.mouseDeltaY;
+      movementY = -movementY;
     }
     
-    // Track current position
-    this.mouseX += this.mouseDeltaX;
-    this.mouseY += this.mouseDeltaY;
+    // Store the movement
+    this.mouseDeltaX = movementX;
+    this.mouseDeltaY = movementY;
   }
   
+  /**
+   * Handle clicks on the element to request pointer lock
+   */
+  onClick() {
+    if (!this.isPointerLocked) {
+      this.requestPointerLock();
+    }
+  }
+  
+  /**
+   * Request pointer lock on the element
+   */
+  requestPointerLock() {
+    try {
+      this.domElement.requestPointerLock();
+    } catch (error) {
+      console.error('Failed to request pointer lock:', error);
+    }
+  }
+  
+  /**
+   * Handle pointer lock change events
+   */
   onPointerLockChange() {
     this.isPointerLocked = document.pointerLockElement === this.domElement;
-    console.log(`Pointer lock status: ${this.isPointerLocked ? 'Locked' : 'Unlocked'}`);
+    
+    // Update status message
+    this.lockStatus.textContent = this.isPointerLocked ? 
+      'Camera controls active (ESC to exit)' : 
+      'Click to control camera';
+    
+    // Hide status after a short delay when locked
+    if (this.isPointerLocked) {
+      setTimeout(() => {
+        this.lockStatus.style.opacity = '0';
+      }, 2000);
+    } else {
+      this.lockStatus.style.opacity = '1';
+    }
+    
+    console.log(`Pointer lock ${this.isPointerLocked ? 'acquired' : 'released'}`);
   }
   
+  /**
+   * Handle pointer lock errors
+   */
   onPointerLockError() {
     console.error('Pointer lock error');
+    this.lockStatus.textContent = 'Camera control error - try again';
   }
   
+  /**
+   * Get the current mouse movement
+   * Called by the camera system each frame
+   */
   getMouseMovement() {
-    // Apply damping to make movements smoother
-    this.mouseDeltaX *= this.damping;
-    this.mouseDeltaY *= this.damping;
+    // Create a copy of the current values
+    const movement = {
+      x: this.mouseDeltaX,
+      y: this.mouseDeltaY
+    };
     
-    // Return mouse movement delta and reset
-    const deltaX = this.mouseDeltaX;
-    const deltaY = this.mouseDeltaY;
-    
-    // Reset deltas after reading
+    // Reset the movement values to avoid repeated movement
     this.mouseDeltaX = 0;
     this.mouseDeltaY = 0;
     
-    return { x: deltaX, y: deltaY };
+    return movement;
   }
   
-  // Clean up event listeners when no longer needed
+  /**
+   * Clean up all event listeners
+   */
   dispose() {
-    this.domElement.removeEventListener('mousemove', this.onMouseMove, false);
+    document.removeEventListener('mousemove', this.onMouseMove, false);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange, false);
     document.removeEventListener('pointerlockerror', this.onPointerLockError, false);
+    this.domElement.removeEventListener('click', this.onClick, false);
+    
+    // Remove status element
+    if (this.lockStatus && this.lockStatus.parentNode) {
+      this.lockStatus.parentNode.removeChild(this.lockStatus);
+    }
+    
+    console.log('InputManager disposed');
   }
 }
 

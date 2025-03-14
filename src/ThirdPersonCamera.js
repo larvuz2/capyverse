@@ -1,235 +1,141 @@
 import * as THREE from 'three';
-import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
+/**
+ * Simplified ThirdPersonCamera class
+ * Core functionality for a reliable third-person camera that follows a target
+ */
 class ThirdPersonCamera {
   constructor(camera, target, options = {}) {
     // Store references
     this.camera = camera;
     this.target = target;
     
-    // Configuration with defaults
-    this.config = {
-      distance: options.distance || 5,            // Distance from target
-      height: options.height || 2,                // Height offset from target
-      smoothing: options.smoothing || 0.05,       // Camera movement smoothing (lower = smoother)
-      rotationSmoothing: options.rotationSmoothing || 0.1, // Rotation smoothing factor
-      minDistance: options.minDistance || 1,      // Minimum distance from target
-      maxDistance: options.maxDistance || 10,     // Maximum distance from target
-      minPolarAngle: options.minPolarAngle || 0.1,// Minimum polar angle (radians)
-      maxPolarAngle: options.maxPolarAngle || 1.5,// Maximum polar angle (radians, ~85 degrees)
-      lookAhead: options.lookAhead || 0.5,        // How much to look ahead of the character when moving
-      collisionLayers: options.collisionLayers || [], // Collision meshes
-      useCollision: options.useCollision !== undefined ? options.useCollision : true, // Enable collision detection
-      showDebug: options.showDebug || false,      // Show debug helpers
-      followSpeed: options.followSpeed || 5,      // How quickly the camera follows character movements
-      zoomSpeed: options.zoomSpeed || 0.1         // Speed for zoom in/out
-    };
-    
-    // Internal state
-    this.currentPosition = new THREE.Vector3();
-    this.desiredPosition = new THREE.Vector3();
-    this.targetPosition = new THREE.Vector3();
-    this.targetLookAt = new THREE.Vector3();
+    // Core configuration with sensible defaults
+    this.distance = options.distance || 5;       // Distance behind character
+    this.height = options.height || 2;           // Height above character
+    this.smoothing = options.smoothing || 0.1;   // Simple position smoothing factor
     
     // Camera angles (in radians)
-    this.horizontalAngle = 0; // Default angle (behind character)
-    this.verticalAngle = 0.3; // Slightly looking down
+    this.horizontalAngle = 0;                   // Initial angle (directly behind character)
+    this.verticalAngle = 0.3;                   // Slightly looking down
     
-    // For collision detection
-    this.raycaster = new THREE.Raycaster();
+    // Angle constraints
+    this.minVerticalAngle = -0.5;               // Limit looking up
+    this.maxVerticalAngle = 0.8;                // Limit looking down
     
-    // Debug helpers
-    if (this.config.showDebug) {
-      this.setupDebugHelpers();
-    }
-    
-    // Set up GUI controls
-    this.setupGUI();
-    
-    // Add zoom control listener
-    this.setupZoomControl();
+    // Camera positioning
+    this.currentPosition = new THREE.Vector3();  // Current smoothed position
+    this.currentLookAt = new THREE.Vector3();    // Current smoothed look-at point
+    this.desiredPosition = new THREE.Vector3();  // Target position before smoothing
     
     // Initialize camera position
     this.updatePosition(0);
+    
+    console.log('Simplified ThirdPersonCamera initialized');
   }
   
-  setupGUI() {
-    const gui = new GUI({ title: 'Camera Settings' });
-    const folder = gui.addFolder('Third Person Camera');
-    
-    folder.add(this.config, 'distance', 1, 15).name('Distance');
-    folder.add(this.config, 'height', 0, 5).name('Height');
-    folder.add(this.config, 'smoothing', 0.01, 1).name('Smoothing');
-    folder.add(this.config, 'useCollision').name('Collision Detection');
-    folder.add(this.config, 'lookAhead', 0, 2).name('Look Ahead');
-    
-    folder.close(); // Closed by default
-  }
-  
-  setupZoomControl() {
-    // Add zoom with mouse wheel
-    this.wheelListener = (event) => {
-      const zoomAmount = Math.sign(event.deltaY) * this.config.zoomSpeed;
-      this.config.distance += zoomAmount;
-      
-      // Clamp distance between min and max
-      this.config.distance = Math.max(
-        this.config.minDistance,
-        Math.min(this.config.maxDistance, this.config.distance)
-      );
-    };
-    
-    document.addEventListener('wheel', this.wheelListener);
-  }
-  
-  setupDebugHelpers() {
-    // Line to show where camera is looking
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, -5)
-    ]);
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-    this.lookLine = new THREE.Line(lineGeometry, lineMaterial);
-    
-    // Add to scene if available
-    if (this.target && this.target.parent) {
-      this.target.parent.add(this.lookLine);
-    }
-  }
-  
+  /**
+   * Update camera angles based on mouse input
+   */
   updateAngles(mouseDelta) {
     if (!mouseDelta) return;
     
     // Update camera angles based on mouse movement
-    this.horizontalAngle -= mouseDelta.x * 0.01; // Convert to radians and adjust sensitivity
-    this.verticalAngle += mouseDelta.y * 0.01;
+    this.horizontalAngle -= mouseDelta.x;
+    this.verticalAngle += mouseDelta.y;
     
     // Clamp vertical angle to avoid flipping
-    this.verticalAngle = Math.max(this.config.minPolarAngle, 
-                                 Math.min(this.config.maxPolarAngle, this.verticalAngle));
+    this.verticalAngle = Math.max(
+      this.minVerticalAngle,
+      Math.min(this.maxVerticalAngle, this.verticalAngle)
+    );
   }
   
+  /**
+   * Calculate desired camera position based on target and angles
+   */
   calculateDesiredPosition() {
-    if (!this.target) return;
+    if (!this.target) {
+      console.warn('ThirdPersonCamera: No target assigned');
+      return;
+    }
     
-    // Get target position (usually the character)
-    this.targetPosition.copy(this.target.position);
+    // Get target position (the character position)
+    const targetPosition = this.target.position.clone();
     
-    // Calculate position based on angles
+    // Calculate desired position using spherical coordinates
     const spherical = new THREE.Spherical(
-      this.config.distance,
-      this.verticalAngle,
+      this.distance,
+      Math.PI/2 - this.verticalAngle, // Convert to spherical theta
       this.horizontalAngle
     );
     
-    // Convert spherical coordinates to position
+    // Convert to Cartesian coordinates and add to target position
     this.desiredPosition.setFromSpherical(spherical);
-    this.desiredPosition.add(this.targetPosition);
+    this.desiredPosition.add(targetPosition);
     
-    // Look ahead adjustment if needed
-    if (this.config.lookAhead > 0 && this.target.userData && this.target.userData.velocity) {
-      const velocity = this.target.userData.velocity;
-      const lookAheadVector = velocity.clone().normalize().multiplyScalar(this.config.lookAhead);
-      this.desiredPosition.add(lookAheadVector);
-    }
-    
-    // Handle collisions
-    if (this.config.useCollision) {
-      this.handleCollisions();
-    }
+    // Calculate look-at position (at target position plus height)
+    this.targetLookAt = targetPosition.clone();
+    this.targetLookAt.y += this.height * 0.5; // Look at upper body, not feet
   }
   
-  handleCollisions() {
-    if (!this.target || this.config.collisionLayers.length === 0) return;
-    
-    // Direction from target to camera
-    const direction = this.desiredPosition.clone().sub(this.targetPosition).normalize();
-    
-    // Set up raycaster from target to desired camera position
-    this.raycaster.set(this.targetPosition, direction);
-    
-    // Calculate distance to desired position
-    const desiredDistance = this.targetPosition.distanceTo(this.desiredPosition);
-    
-    // Check for collisions
-    const intersects = this.raycaster.intersectObjects(this.config.collisionLayers, true);
-    
-    // Handle collision if found and closer than desired distance
-    if (intersects.length > 0 && intersects[0].distance < desiredDistance) {
-      const collisionPoint = intersects[0].point;
-      
-      // Move camera to collision point minus a small offset
-      this.desiredPosition.copy(collisionPoint).sub(
-        direction.multiplyScalar(0.2) // Small offset to avoid clipping
-      );
-    }
-  }
-  
+  /**
+   * Update camera position with simple smoothing
+   */
   updatePosition(deltaTime = 1/60) {
     if (!this.target) return;
     
-    // Calculate target position and desired camera position
+    // Calculate desired position
     this.calculateDesiredPosition();
     
-    // Calculate look-at position (at target height)
-    this.targetLookAt.copy(this.targetPosition);
+    // Simple smoothing with delta time compensation
+    const smoothFactor = Math.min(1.0, this.smoothing * deltaTime * 60);
     
-    // Smooth camera position based on delta time
-    const smoothFactor = 1.0 - Math.pow(1.0 - this.config.smoothing, deltaTime * 60);
-    this.currentPosition.lerp(this.desiredPosition, smoothFactor);
-    
-    // Update camera position and orientation
-    this.camera.position.copy(this.currentPosition);
-    this.camera.lookAt(this.targetLookAt);
-    
-    // Update debug helpers if enabled
-    if (this.config.showDebug && this.lookLine) {
-      this.lookLine.position.copy(this.targetPosition);
-      this.lookLine.lookAt(this.camera.position);
+    // If this is the first update, snap to position without smoothing
+    if (this.currentPosition.lengthSq() === 0) {
+      this.currentPosition.copy(this.desiredPosition);
+      this.currentLookAt = this.targetLookAt.clone();
+    } else {
+      // Apply smoothing to camera position and look-at
+      this.currentPosition.lerp(this.desiredPosition, smoothFactor);
+      this.currentLookAt.lerp(this.targetLookAt, smoothFactor);
     }
+    
+    // Update actual camera position and orientation
+    this.camera.position.copy(this.currentPosition);
+    this.camera.lookAt(this.currentLookAt);
   }
   
-  // Public method to update the camera with mouse input
+  /**
+   * Main update method called from animation loop
+   */
   update(deltaTime = 1/60, mouseDelta = null) {
+    if (!this.target) {
+      console.warn('ThirdPersonCamera: No target assigned');
+      return;
+    }
+    
+    // Update camera angles and position
     this.updateAngles(mouseDelta);
     this.updatePosition(deltaTime);
   }
   
-  // Reset camera to default position behind target
+  /**
+   * Reset camera to default position behind character
+   */
   reset() {
     this.horizontalAngle = 0;
     this.verticalAngle = 0.3;
+    this.currentPosition.set(0, 0, 0); // Force immediate repositioning
     this.update();
   }
   
-  // Add collision objects
-  addCollisionObject(object) {
-    if (!this.config.collisionLayers.includes(object)) {
-      this.config.collisionLayers.push(object);
-    }
-  }
-  
-  // Set collision layer objects
-  setCollisionLayers(objects) {
-    this.config.collisionLayers = Array.isArray(objects) ? objects : [objects];
-  }
-  
-  // Clean up method for removing debug helpers etc.
-  dispose() {
-    if (this.config.showDebug && this.lookLine) {
-      if (this.lookLine.parent) {
-        this.lookLine.parent.remove(this.lookLine);
-      }
-      if (this.lookLine.geometry) {
-        this.lookLine.geometry.dispose();
-      }
-      if (this.lookLine.material) {
-        this.lookLine.material.dispose();
-      }
-    }
-    
-    // Remove zoom wheel listener
-    document.removeEventListener('wheel', this.wheelListener);
+  /**
+   * Change the target the camera is following
+   */
+  setTarget(newTarget) {
+    this.target = newTarget;
+    this.reset();
   }
 }
 
