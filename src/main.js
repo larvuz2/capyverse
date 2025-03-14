@@ -498,13 +498,25 @@ async function loadModels() {
     // Load animations
     mixer = new THREE.AnimationMixer(character);
     
+    // Load required animations first
     const idleModel = await loader.loadAsync('./animations/idle.glb');
     const walkModel = await loader.loadAsync('./animations/walk.glb');
-    const jumpModel = await loader.loadAsync('./animations/jump.glb');
     
     idleAction = mixer.clipAction(idleModel.animations[0]);
     walkAction = mixer.clipAction(walkModel.animations[0]);
-    jumpAction = mixer.clipAction(jumpModel.animations[0]);
+    
+    // Try to load jump animation, but continue if it fails
+    try {
+      const jumpModel = await loader.loadAsync('./animations/jump.glb');
+      jumpAction = mixer.clipAction(jumpModel.animations[0]);
+      console.log("Jump animation loaded successfully");
+    } catch (jumpError) {
+      console.warn("Jump animation not found, using walk animation for jump state:", jumpError);
+      // Use walk animation as fallback for jump
+      jumpAction = walkAction;
+    }
+    
+    // Start with idle animation
     activeAction = idleAction;
     idleAction.play();
     
