@@ -5,6 +5,7 @@ import * as RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import StaticCamera from './StaticCamera.js';
 import ThirdPersonCamera from './ThirdPersonCamera.js';
+import InputManager from './utils/InputManager.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -20,6 +21,23 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.enabled = false; // Disable by default, enable for debugging
+
+// Global GUI
+const gui = new GUI();
+const cameraFolder = gui.addFolder('Camera Controls');
+
+// Camera modes
+const cameraModes = {
+  mode: 'thirdPerson' // Default to third person camera
+};
+
+// Add camera mode dropdown to GUI
+cameraFolder.add(cameraModes, 'mode', ['thirdPerson', 'static'])
+  .name('Camera Mode')
+  .onChange((value) => {
+    activeCamera = value;
+    console.log(`Switched to ${value} camera`);
+  });
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -71,6 +89,10 @@ function createTemporaryCapybara() {
   character = new THREE.Mesh(geometry, material);
   character.castShadow = true;
   character.position.set(0, 1, 0);
+  
+  // Set initial rotation to face away from camera (180 degrees)
+  character.rotation.y = Math.PI;
+  
   scene.add(character);
   
   // Create physics body for character
@@ -91,6 +113,10 @@ async function loadModels() {
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
     character.position.set(0, 1, 0);
+    
+    // Set initial rotation to face away from camera (180 degrees)
+    character.rotation.y = Math.PI;
+    
     scene.add(character);
     
     // Create physics body for character
@@ -183,11 +209,17 @@ let staticCamera; // Reference to static camera
 let thirdPersonCamera; // Reference to third person camera
 let activeCamera = 'thirdPerson'; // Default to third person camera
 
+// Add after scene setup
+// Input manager for mouse controls
+let inputManager;
+
 function updateCharacter(delta) {
   if (!characterBody) return;
   
   const velocity = characterBody.linvel();
   let movement = new THREE.Vector3();
+  let shouldRotate = false;
+  let targetRotation = 0;
   
   // Check if grounded
   const position = characterBody.translation();
@@ -198,11 +230,42 @@ function updateCharacter(delta) {
   const hit = world.castRay(ray, 1.1, true);
   isGrounded = hit !== null;
 
-  // Movement
-  if (keys.w) movement.z -= 1;
-  if (keys.s) movement.z += 1;
-  if (keys.a) movement.x -= 1;
-  if (keys.d) movement.x += 1;
+  // Movement based on key presses
+  if (keys.w) {
+    // Move forward (character facing away from camera)
+    movement.z -= 1;
+    targetRotation = Math.PI; // 180 degrees (facing away from camera)
+    shouldRotate = true;
+  }
+  if (keys.s) {
+    // Move backward (character facing toward camera)
+    movement.z += 1;
+    targetRotation = 0; // 0 degrees (facing toward camera)
+    shouldRotate = true;
+  }
+  if (keys.a) {
+    // Move left (character facing left)
+    movement.x -= 1;
+    targetRotation = Math.PI / 2; // 90 degrees (facing left)
+    shouldRotate = true;
+  }
+  if (keys.d) {
+    // Move right (character facing right)
+    movement.x += 1;
+    targetRotation = -Math.PI / 2; // -90 degrees (facing right)
+    shouldRotate = true;
+  }
+  
+  // Handle diagonal movement
+  if (keys.w && keys.a) {
+    targetRotation = Math.PI * 3/4; // 135 degrees
+  } else if (keys.w && keys.d) {
+    targetRotation = Math.PI * 5/4; // 225 degrees
+  } else if (keys.s && keys.a) {
+    targetRotation = Math.PI / 4; // 45 degrees
+  } else if (keys.s && keys.d) {
+    targetRotation = -Math.PI / 4; // -45 degrees
+  }
   
   if (movement.length() > 0) {
     movement.normalize().multiplyScalar(moveSpeed);
@@ -239,14 +302,28 @@ function updateCharacter(delta) {
   character.position.set(pos.x, pos.y - 0.5, pos.z); // Adjust Y to account for capsule height
   
   // Rotate character to face movement direction
-  if (movement.length() > 0) {
-    const targetRotation = Math.atan2(movement.x, movement.z);
-    character.rotation.y = targetRotation;
+  if (shouldRotate) {
+    // Smooth rotation
+    const currentRotation = character.rotation.y;
+    const rotationDiff = targetRotation - currentRotation;
+    
+    // Handle wrapping around 2PI
+    let shortestRotation = ((rotationDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (shortestRotation < -Math.PI) {
+      shortestRotation += Math.PI * 2;
+    }
+    
+    // Apply smooth rotation
+    character.rotation.y += shortestRotation * 0.1;
   }
   
   // Update active camera if it's the third person camera
-  if (activeCamera === 'thirdPerson' && thirdPersonCamera) {
-    thirdPersonCamera.update(delta);
+  if (activeCamera === 'thirdPerson' && thirdPersonCamera && inputManager) {
+    // Get mouse movement from input manager
+    const mouseDelta = inputManager.getMouseMovement();
+    
+    // Update the camera with delta time and mouse movement
+    thirdPersonCamera.update(delta, mouseDelta);
   }
 }
 
@@ -288,7 +365,30 @@ async function init() {
     
     // Initialize third person camera after character is loaded
     if (character) {
-      thirdPersonCamera = new ThirdPersonCamera(camera, scene, character);
+      // Initialize the input manager for camera controls
+      inputManager = new InputManager(renderer.domElement);
+      
+      // Initialize the third person camera with the target character
+      thirdPersonCamera = new ThirdPersonCamera(camera, character, {
+        distance: 5,      // Distance from the character
+        height: 2,        // Height offset above character
+        smoothing: 0.05,  // Camera smoothing (lower = smoother)
+        useCollision: true // Enable collision detection
+      });
+      
+      // Add collision objects to the camera (all meshes with isMesh flag except the character)
+      const collisionObjects = [];
+      scene.traverse((object) => {
+        if (object.isMesh && object !== character) {
+          collisionObjects.push(object);
+        }
+      });
+      
+      if (collisionObjects.length > 0) {
+        thirdPersonCamera.setCollisionLayers(collisionObjects);
+      }
+      
+      console.log("Third person camera initialized");
     }
     
     // Start animation loop
