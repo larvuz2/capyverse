@@ -5,6 +5,7 @@ import * as RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import ThirdPersonCamera from './ThirdPersonCamera.js';
 import InputManager from './utils/InputManager.js';
+import NatureEnvironment from './NatureEnvironment.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -372,6 +373,55 @@ for (const presetName of Object.keys(config.presets.list)) {
 storageFolder.add(config.storage, 'save').name('Save Settings');
 storageFolder.add(config.storage, 'load').name('Load Settings');
 
+// Setup Environment controls
+const environmentFolder = gui.addFolder('Environment');
+
+environmentFolder.add({ 
+  regenerateTrees: function() {
+    if (natureEnvironment) {
+      // Remove existing trees
+      natureEnvironment.objects.trees.forEach(tree => {
+        scene.remove(tree);
+      });
+      natureEnvironment.objects.trees = [];
+      
+      // Create new trees
+      natureEnvironment.createTrees();
+    }
+  }
+}, 'regenerateTrees').name('Regenerate Trees');
+
+environmentFolder.add({ 
+  regenerateClouds: function() {
+    if (natureEnvironment) {
+      // Remove existing clouds
+      natureEnvironment.objects.clouds.forEach(cloud => {
+        scene.remove(cloud);
+      });
+      natureEnvironment.objects.clouds = [];
+      
+      // Create new clouds
+      natureEnvironment.createClouds();
+    }
+  }
+}, 'regenerateClouds').name('Regenerate Clouds');
+
+environmentFolder.add({ treeCount: 100 }, 'treeCount', 0, 200, 10)
+  .name('Tree Count')
+  .onChange(value => {
+    if (natureEnvironment) {
+      natureEnvironment.config.trees.count = value;
+    }
+  });
+
+environmentFolder.add({ cloudCount: 20 }, 'cloudCount', 0, 50, 5)
+  .name('Cloud Count')
+  .onChange(value => {
+    if (natureEnvironment) {
+      natureEnvironment.config.clouds.count = value;
+    }
+  });
+
 // Setup GUI controls
 guiControlsFolder.add(config.gui, 'visible').name('Show GUI').onChange(value => {
   if (value) {
@@ -388,6 +438,7 @@ characterFolder.open();
 physicsFolder.open();
 presetsFolder.open();
 storageFolder.open();
+environmentFolder.open();
 guiControlsFolder.open();
 
 // Hide GUI by default
@@ -426,6 +477,9 @@ let rapier = RAPIER;
 let isGrounded = true;
 let wasMoving = false;
 let wasGrounded = true;
+
+// Global variables
+let natureEnvironment;
 
 async function initPhysics() {
   try {
@@ -563,22 +617,24 @@ function fadeToAction(newAction, duration = 0.2) {
 
 // Ground plane
 function createGround() {
-  const groundGeo = new THREE.PlaneGeometry(200, 200);
-  const groundMat = new THREE.MeshStandardMaterial({ 
-    color: 0x7CFC00, // Lawn green
-    roughness: 0.8,
-    metalness: 0.2,
-    side: THREE.DoubleSide
-  });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = 0;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  // Instead of creating a simple ground plane, initialize our nature environment
+  natureEnvironment = new NatureEnvironment(scene);
+  natureEnvironment.init();
   
-  // Add a grid helper for reference
-  const gridHelper = new THREE.GridHelper(200, 50);
-  scene.add(gridHelper);
+  // We don't need the grid helper with our rich environment
+  // const gridHelper = new THREE.GridHelper(200, 50);
+  // scene.add(gridHelper);
+  
+  // Create a physics body for the ground
+  // We'll create a flat physics ground that matches roughly with our visual terrain
+  // For simplicity, we're using a flat collider even though visual terrain has hills
+  const groundBodyDesc = RAPIER.RigidBodyDesc.fixed();
+  const groundBody = world.createRigidBody(groundBodyDesc);
+  
+  const groundColliderDesc = RAPIER.ColliderDesc.cuboid(100, 0.1, 100);
+  groundColliderDesc.setFriction(config.physics.friction);
+  groundColliderDesc.setRestitution(config.physics.restitution);
+  world.createCollider(groundColliderDesc, groundBody);
 }
 
 // Input handling
@@ -917,6 +973,11 @@ function animate() {
     }
   }
   
+  // Update nature environment if it exists
+  if (natureEnvironment) {
+    natureEnvironment.update(delta);
+  }
+  
   // Render the scene
   renderer.render(scene, camera);
 }
@@ -1023,106 +1084,3 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// Camera success criteria checker - run this from console
-window.testCameraFunctionality = function() {
-  // Exit early if camera or character aren't ready
-  if (!thirdPersonCamera || !character) {
-    console.error("Camera or character not initialized");
-    return {
-      success: false,
-      reason: "Camera or character not initialized"
-    };
-  }
-  
-  const results = {
-    characterVisible: false,
-    properHeight: false,
-    followsCharacter: false,
-    rotationWorks: false,
-    smoothMovement: false,
-    overallStatus: false
-  };
-  
-  // Test 1: Character is visible (camera is above ground)
-  results.characterVisible = camera.position.y > 0.5;
-  console.log(`Test 1 - Character is visible: ${results.characterVisible ? 'PASS' : 'FAIL'}`);
-  
-  // Test 2: Camera has proper height
-  const heightDiff = Math.abs(camera.position.y - (character.position.y + thirdPersonCamera.height));
-  results.properHeight = heightDiff < 3; // Allow some flexibility for angle
-  console.log(`Test 2 - Camera has proper height: ${results.properHeight ? 'PASS' : 'FAIL'}`);
-  
-  // Test 3: Camera follows character (save initial state)
-  const initialPos = character.position.clone();
-  const initialCamPos = camera.position.clone();
-  
-  // Force character movement in X direction
-  console.log("Moving character to test camera follow...");
-  
-  // Store current key states
-  const prevKeyStates = { ...keys };
-  
-  // Simulate W key press for 0.5 seconds
-  keys.w = true;
-  
-  // Set a timeout to check results after movement
-  setTimeout(() => {
-    // Release keys
-    keys.w = prevKeyStates.w;
-    
-    // Check if camera has moved with character
-    const newDistance = camera.position.distanceTo(character.position);
-    const followDistance = Math.abs(
-      newDistance - initialCamPos.distanceTo(initialPos)
-    );
-    
-    results.followsCharacter = followDistance < 2; // Should be approximately the same distance
-    console.log(`Test 3 - Camera follows character: ${results.followsCharacter ? 'PASS' : 'FAIL'}`);
-    
-    // Test 5: Movement is smooth (check jitter score if available)
-    if (cameraDebug.positionHistory.length >= 3) {
-      // Use the jitter calculation from our debug function
-      let totalJitter = 0;
-      for (let i = 2; i < cameraDebug.positionHistory.length; i++) {
-        const pos1 = cameraDebug.positionHistory[i-2];
-        const pos2 = cameraDebug.positionHistory[i-1];
-        const pos3 = cameraDebug.positionHistory[i];
-        
-        const vel1 = new THREE.Vector3().subVectors(pos2, pos1);
-        const vel2 = new THREE.Vector3().subVectors(pos3, pos2);
-        const accel = new THREE.Vector3().subVectors(vel2, vel1);
-        
-        totalJitter += accel.length();
-      }
-      const avgJitter = totalJitter / (cameraDebug.positionHistory.length - 2);
-      
-      // Lower jitter score means smoother movement
-      results.smoothMovement = avgJitter < 0.1;
-      console.log(`Test 5 - Camera movement is smooth (jitter: ${avgJitter.toFixed(4)}): ${results.smoothMovement ? 'PASS' : 'FAIL'}`);
-    } else {
-      console.log("Test 5 - Not enough position data to measure smoothness");
-      results.smoothMovement = true; // Default to true if we can't measure
-    }
-    
-    // Calculate overall status
-    results.overallStatus = results.characterVisible &&
-                          results.properHeight &&
-                          results.followsCharacter &&
-                          results.smoothMovement;
-    
-    console.log(`\nOVERALL CAMERA FUNCTIONALITY: ${results.overallStatus ? 'PASSED' : 'FAILED'}`);
-    console.log("For Test 4 (rotation works), please manually verify by moving the mouse");
-    console.log("If the camera rotates around the character when moving the mouse, Test 4 PASSES");
-    
-    return results;
-  }, 500);
-  
-  console.log("Camera functionality test in progress...");
-  console.log("Check console in 0.5 seconds for results");
-  
-  // Manual test instruction for rotation
-  console.log("\nTest 4 - Manual check: Move mouse and verify camera rotation");
-  
-  return "Test running...";
-};

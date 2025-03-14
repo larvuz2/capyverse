@@ -3,15 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Capyverse - Capybara Controller</title>
+  <title>Three.js Nature Environment Demo</title>
   <style>
     body {
       margin: 0;
       overflow: hidden;
-    }
-    #container {
-      width: 100%;
-      height: 100vh;
+      font-family: Arial, sans-serif;
     }
     #info {
       position: absolute;
@@ -21,20 +18,19 @@
       background-color: rgba(0, 0, 0, 0.5);
       padding: 10px;
       border-radius: 5px;
-      font-family: Arial, sans-serif;
     }
   </style>
 </head>
 <body>
-  <div id="container"></div>
   <div id="info">
-    <h2>Capyverse</h2>
-    <p>Controls:</p>
+    <h2>Three.js Nature Environment</h2>
+    <p>Orbit Controls:</p>
     <ul>
-      <li>W, A, S, D - Move</li>
-      <li>Space - Jump</li>
+      <li>Left click + drag: Rotate</li>
+      <li>Right click + drag: Pan</li>
+      <li>Scroll: Zoom</li>
     </ul>
   </div>
-  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="/src/nature-demo.js"></script>
 </body>
 </html> 
