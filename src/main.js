@@ -28,19 +28,19 @@ gui.title('Capyverse Controls');
 // Configuration object for all adjustable parameters
 const config = {
   camera: {
-    distance: 5,
+    distance: 2.8,
     height: 2,
     lookAtHeight: 0.5,
-    smoothing: 0.1,
+    smoothing: 0.74,
     minVerticalAngle: -0.5,
     maxVerticalAngle: 0.8,
     rotationSpeed: 0.003,
     reset: function() {
       // Reset camera parameters to defaults
-      config.camera.distance = 5;
+      config.camera.distance = 2.8;
       config.camera.height = 2;
       config.camera.lookAtHeight = 0.5;
-      config.camera.smoothing = 0.1;
+      config.camera.smoothing = 0.74;
       config.camera.minVerticalAngle = -0.5;
       config.camera.maxVerticalAngle = 0.8;
       config.camera.rotationSpeed = 0.003;
@@ -66,13 +66,13 @@ const config = {
     }
   },
   character: {
-    moveSpeed: 5,
-    jumpForce: 10,
+    moveSpeed: 2,
+    jumpForce: 5,
     turnSpeed: 5,
     reset: function() {
       // Reset character parameters to defaults
-      config.character.moveSpeed = 5;
-      config.character.jumpForce = 10;
+      config.character.moveSpeed = 2;
+      config.character.jumpForce = 5;
       config.character.turnSpeed = 5;
       
       // Update all controllers
@@ -82,14 +82,14 @@ const config = {
     }
   },
   physics: {
-    gravity: -19.62,
+    gravity: -23,
     friction: 0.2,
-    restitution: 0.0,
+    restitution: 0,
     reset: function() {
       // Reset physics parameters to defaults
-      config.physics.gravity = -19.62;
+      config.physics.gravity = -23;
       config.physics.friction = 0.2;
-      config.physics.restitution = 0.0;
+      config.physics.restitution = 0;
       
       // Update physics world
       if (world) {
@@ -167,23 +167,23 @@ const config = {
     list: {
       'Default': {
         camera: {
-          distance: 5,
+          distance: 2.8,
           height: 2,
           lookAtHeight: 0.5,
-          smoothing: 0.1,
+          smoothing: 0.74,
           minVerticalAngle: -0.5,
           maxVerticalAngle: 0.8,
           rotationSpeed: 0.003
         },
         character: {
-          moveSpeed: 5,
-          jumpForce: 10,
+          moveSpeed: 2,
+          jumpForce: 5,
           turnSpeed: 5
         },
         physics: {
-          gravity: -19.62,
+          gravity: -23,
           friction: 0.2,
-          restitution: 0.0
+          restitution: 0
         }
       },
       'Low Gravity': {
@@ -226,7 +226,7 @@ const config = {
     }
   },
   gui: {
-    visible: true,
+    visible: false,
     toggle: function() {
       config.gui.visible = !config.gui.visible;
       if (config.gui.visible) {
@@ -389,6 +389,9 @@ physicsFolder.open();
 presetsFolder.open();
 storageFolder.open();
 guiControlsFolder.open();
+
+// Hide GUI by default
+gui.domElement.style.display = 'none';
 
 // Add G key to toggle GUI visibility
 document.addEventListener('keydown', (e) => {
