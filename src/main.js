@@ -422,6 +422,11 @@ let world, characterBody;
 let physicsInitialized = false;
 let rapier = RAPIER;
 
+// Animation and movement state
+let isGrounded = true;
+let wasMoving = false;
+let wasGrounded = true;
+
 async function initPhysics() {
   try {
     // Create a physics world with gravity from config
@@ -441,7 +446,7 @@ async function initPhysics() {
 }
 
 // Character and animations
-let mixer, idleAction, walkAction, activeAction;
+let mixer, idleAction, walkAction, jumpAction, activeAction;
 let character;
 const loader = new GLTFLoader();
 
@@ -495,9 +500,11 @@ async function loadModels() {
     
     const idleModel = await loader.loadAsync('./animations/idle.glb');
     const walkModel = await loader.loadAsync('./animations/walk.glb');
+    const jumpModel = await loader.loadAsync('./animations/jump.glb');
     
     idleAction = mixer.clipAction(idleModel.animations[0]);
     walkAction = mixer.clipAction(walkModel.animations[0]);
+    jumpAction = mixer.clipAction(jumpModel.animations[0]);
     activeAction = idleAction;
     idleAction.play();
     
@@ -507,6 +514,39 @@ async function loadModels() {
     // Fallback to temporary capybara if loading fails
     createTemporaryCapybara();
   }
+}
+
+// Animation transition function
+function fadeToAction(newAction, duration = 0.2) {
+  // Prevent switching to the same animation
+  if (activeAction === newAction) return;
+  
+  // Log animation transition for debugging
+  const animationMap = {
+    [idleAction]: 'Idle',
+    [walkAction]: 'Walk',
+    [jumpAction]: 'Jump'
+  };
+  
+  const fromAnim = activeAction ? animationMap[activeAction] || 'Unknown' : 'None';
+  const toAnim = animationMap[newAction] || 'Unknown';
+  
+  console.log(`Animation transition: ${fromAnim} -> ${toAnim}`);
+  
+  // Configure new action to fade in
+  newAction.reset();
+  newAction.setEffectiveTimeScale(1);
+  newAction.setEffectiveWeight(1);
+  
+  // Crossfade from current active action to new action
+  if (activeAction) {
+    // Setup crossfade
+    newAction.crossFadeFrom(activeAction, duration, true);
+  }
+  
+  // Play new action and update the active action reference
+  newAction.play();
+  activeAction = newAction;
 }
 
 // Ground plane
@@ -564,7 +604,6 @@ document.addEventListener('keyup', (e) => {
 const moveSpeed = 5;
 const jumpForce = 10;
 let velocity = new THREE.Vector3();
-let isGrounded = true;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 
 // Camera controllers
@@ -799,11 +838,6 @@ function animate() {
     }
   }
   
-  // Update character animations
-  if (mixer) {
-    mixer.update(delta);
-  }
-  
   // Update character position and movement
   handleCharacterMovement(delta);
   
@@ -816,6 +850,43 @@ function animate() {
     );
     const hit = world.castRay(ray, 1.1, true);
     isGrounded = hit !== null;
+  }
+  
+  // Update character animations
+  if (mixer) {
+    mixer.update(delta);
+    
+    // Update animation state based on character movement and airborne status
+    if (characterBody) {
+      const velocity = characterBody.linvel();
+      const isMoving = Math.abs(velocity.x) > 0.1 || Math.abs(velocity.z) > 0.1;
+      
+      // Add hysteresis to avoid flickering between states
+      const movementChanged = isMoving !== wasMoving;
+      const groundedChanged = isGrounded !== wasGrounded;
+      
+      // Determine which animation to play
+      if (!isGrounded) {
+        // Only switch to jump animation when we first leave the ground
+        if (groundedChanged || activeAction !== jumpAction) {
+          fadeToAction(jumpAction);
+        }
+      } else if (isMoving) {
+        // Only switch to walk animation when we start moving
+        if (movementChanged || (groundedChanged && activeAction === jumpAction) || activeAction === idleAction) {
+          fadeToAction(walkAction);
+        }
+      } else {
+        // Only switch to idle animation when we stop moving
+        if (movementChanged || (groundedChanged && activeAction === jumpAction)) {
+          fadeToAction(idleAction);
+        }
+      }
+      
+      // Update previous state trackers
+      wasMoving = isMoving;
+      wasGrounded = isGrounded;
+    }
   }
   
   // Update third-person camera
