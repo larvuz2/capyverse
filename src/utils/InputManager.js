@@ -179,8 +179,4 @@ class InputManager {
   }
 }
 
-<<<<<<< HEAD
 export default InputManager; 
-=======
-export default InputManager; 
->>>>>>> 26b034f2acdf725df64d9fdce68981b5abc0f94e

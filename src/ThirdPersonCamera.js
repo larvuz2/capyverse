@@ -204,8 +204,4 @@ class ThirdPersonCamera {
   }
 }
 
-<<<<<<< HEAD
 export default ThirdPersonCamera; 
-=======
-export default ThirdPersonCamera; 
->>>>>>> 26b034f2acdf725df64d9fdce68981b5abc0f94e

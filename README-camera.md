@@ -98,8 +98,4 @@ const options = {
 
 - The camera uses a spherical coordinate system to position itself around the target
 - Collision detection uses Three.js Raycaster to detect objects between the camera and target
-<<<<<<< HEAD
-- Mouse input uses the Pointer Lock API for continuous mouse movement 
-=======
 - Mouse input uses the Pointer Lock API for continuous mouse movement
->>>>>>> 26b034f2acdf725df64d9fdce68981b5abc0f94e
