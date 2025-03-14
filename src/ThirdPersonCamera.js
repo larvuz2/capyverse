@@ -17,10 +17,12 @@ class ThirdPersonCamera {
       maxDistance: options.maxDistance || 10,     // Maximum distance from target
       minPolarAngle: options.minPolarAngle || 0.1,// Minimum polar angle (radians)
       maxPolarAngle: options.maxPolarAngle || 1.5,// Maximum polar angle (radians, ~85 degrees)
-      lookAhead: options.lookAhead || 0,          // How much to look ahead of the character
+      lookAhead: options.lookAhead || 0.5,        // How much to look ahead of the character when moving
       collisionLayers: options.collisionLayers || [], // Collision meshes
       useCollision: options.useCollision !== undefined ? options.useCollision : true, // Enable collision detection
-      showDebug: options.showDebug || false       // Show debug helpers
+      showDebug: options.showDebug || false,      // Show debug helpers
+      followSpeed: options.followSpeed || 5,      // How quickly the camera follows character movements
+      zoomSpeed: options.zoomSpeed || 0.1         // Speed for zoom in/out
     };
     
     // Internal state
@@ -44,6 +46,9 @@ class ThirdPersonCamera {
     // Set up GUI controls
     this.setupGUI();
     
+    // Add zoom control listener
+    this.setupZoomControl();
+    
     // Initialize camera position
     this.updatePosition(0);
   }
@@ -56,8 +61,25 @@ class ThirdPersonCamera {
     folder.add(this.config, 'height', 0, 5).name('Height');
     folder.add(this.config, 'smoothing', 0.01, 1).name('Smoothing');
     folder.add(this.config, 'useCollision').name('Collision Detection');
+    folder.add(this.config, 'lookAhead', 0, 2).name('Look Ahead');
     
     folder.close(); // Closed by default
+  }
+  
+  setupZoomControl() {
+    // Add zoom with mouse wheel
+    this.wheelListener = (event) => {
+      const zoomAmount = Math.sign(event.deltaY) * this.config.zoomSpeed;
+      this.config.distance += zoomAmount;
+      
+      // Clamp distance between min and max
+      this.config.distance = Math.max(
+        this.config.minDistance,
+        Math.min(this.config.maxDistance, this.config.distance)
+      );
+    };
+    
+    document.addEventListener('wheel', this.wheelListener);
   }
   
   setupDebugHelpers() {
@@ -205,6 +227,9 @@ class ThirdPersonCamera {
         this.lookLine.material.dispose();
       }
     }
+    
+    // Remove zoom wheel listener
+    document.removeEventListener('wheel', this.wheelListener);
   }
 }
 

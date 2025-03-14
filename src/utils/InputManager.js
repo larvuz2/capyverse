@@ -17,8 +17,9 @@ class InputManager {
     this.previousMouseY = 0;
     
     // Settings
-    this.sensitivity = 0.2; // Mouse sensitivity
-    this.invertY = false;   // Whether to invert Y-axis movement
+    this.sensitivity = 0.15; // Slightly reduced for smoother control
+    this.invertY = false;    // Whether to invert Y-axis movement
+    this.damping = 0.85;     // Damping factor for mouse movement
     
     // Bind event handlers
     this.onMouseMove = this.onMouseMove.bind(this);
@@ -87,6 +88,10 @@ class InputManager {
   }
   
   getMouseMovement() {
+    // Apply damping to make movements smoother
+    this.mouseDeltaX *= this.damping;
+    this.mouseDeltaY *= this.damping;
+    
     // Return mouse movement delta and reset
     const deltaX = this.mouseDeltaX;
     const deltaY = this.mouseDeltaY;

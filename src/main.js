@@ -3,7 +3,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
-import StaticCamera from './StaticCamera.js';
 import ThirdPersonCamera from './ThirdPersonCamera.js';
 import InputManager from './utils/InputManager.js';
 
@@ -24,20 +23,6 @@ controls.enabled = false; // Disable by default, enable for debugging
 
 // Global GUI
 const gui = new GUI();
-const cameraFolder = gui.addFolder('Camera Controls');
-
-// Camera modes
-const cameraModes = {
-  mode: 'thirdPerson' // Default to third person camera
-};
-
-// Add camera mode dropdown to GUI
-cameraFolder.add(cameraModes, 'mode', ['thirdPerson', 'static'])
-  .name('Camera Mode')
-  .onChange((value) => {
-    activeCamera = value;
-    console.log(`Switched to ${value} camera`);
-  });
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -175,16 +160,6 @@ document.addEventListener('keydown', (e) => {
     case 's': keys.s = true; break;
     case 'd': keys.d = true; break;
     case ' ': keys.space = true; break;
-    case 'c': 
-      // Toggle between camera modes
-      if (activeCamera === 'static') {
-        activeCamera = 'thirdPerson';
-        console.log('Switched to third person camera');
-      } else {
-        activeCamera = 'static';
-        console.log('Switched to static camera');
-      }
-      break;
   }
 });
 document.addEventListener('keyup', (e) => {
@@ -205,12 +180,7 @@ let isGrounded = true;
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 
 // Camera controllers
-let staticCamera; // Reference to static camera
 let thirdPersonCamera; // Reference to third person camera
-let activeCamera = 'thirdPerson'; // Default to third person camera
-
-// Add after scene setup
-// Input manager for mouse controls
 let inputManager;
 
 function updateCharacter(delta) {
@@ -317,8 +287,8 @@ function updateCharacter(delta) {
     character.rotation.y += shortestRotation * 0.1;
   }
   
-  // Update active camera if it's the third person camera
-  if (activeCamera === 'thirdPerson' && thirdPersonCamera && inputManager) {
+  // Update the camera with delta time and mouse movement
+  if (thirdPersonCamera && inputManager) {
     // Get mouse movement from input manager
     const mouseDelta = inputManager.getMouseMovement();
     
@@ -347,9 +317,8 @@ function animate() {
 // Initialize and start
 async function init() {
   try {
-    // Set initial camera position
+    // Set initial camera position (will be overridden by third person camera)
     camera.position.set(0, 10, 20);
-    camera.lookAt(0, 0, 0);
     
     // Initialize physics first
     await initPhysics();
@@ -360,23 +329,22 @@ async function init() {
     // Load models
     await loadModels();
     
-    // Setup cameras
-    staticCamera = new StaticCamera(camera, scene);
+    // Initialize the input manager for camera controls
+    inputManager = new InputManager(renderer.domElement);
     
-    // Initialize third person camera after character is loaded
+    // Initialize the third person camera after character is loaded
     if (character) {
-      // Initialize the input manager for camera controls
-      inputManager = new InputManager(renderer.domElement);
-      
       // Initialize the third person camera with the target character
       thirdPersonCamera = new ThirdPersonCamera(camera, character, {
-        distance: 5,      // Distance from the character
-        height: 2,        // Height offset above character
-        smoothing: 0.05,  // Camera smoothing (lower = smoother)
-        useCollision: true // Enable collision detection
+        distance: 5,         // Distance from the character
+        height: 2,           // Height offset above character
+        smoothing: 0.05,     // Camera smoothing (lower = smoother)
+        rotationSmoothing: 0.1, // Rotation smoothing factor
+        useCollision: true,  // Enable collision detection
+        showDebug: false     // Show debug helpers (useful for development)
       });
       
-      // Add collision objects to the camera (all meshes with isMesh flag except the character)
+      // Add collision objects to the camera
       const collisionObjects = [];
       scene.traverse((object) => {
         if (object.isMesh && object !== character) {
