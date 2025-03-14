@@ -70,11 +70,13 @@ const config = {
     moveSpeed: 2,
     jumpForce: 5,
     turnSpeed: 5,
+    heightOffset: 0.1, // Default height offset changed from 0 to 0.1
     reset: function() {
       // Reset character parameters to defaults
       config.character.moveSpeed = 2;
       config.character.jumpForce = 5;
       config.character.turnSpeed = 5;
+      config.character.heightOffset = 0.1;
       
       // Update all controllers
       for (const controller of Object.values(characterFolder.controllers)) {
@@ -179,7 +181,8 @@ const config = {
         character: {
           moveSpeed: 2,
           jumpForce: 5,
-          turnSpeed: 5
+          turnSpeed: 5,
+          heightOffset: 0.1
         },
         physics: {
           gravity: -23,
@@ -193,7 +196,8 @@ const config = {
           restitution: 0.3
         },
         character: {
-          jumpForce: 5
+          jumpForce: 5,
+          heightOffset: 0.1
         }
       },
       'Cinematic': {
@@ -206,14 +210,16 @@ const config = {
         },
         character: {
           moveSpeed: 3,
-          turnSpeed: 3
+          turnSpeed: 3,
+          heightOffset: 0.1
         }
       },
       'Fast Movement': {
         character: {
           moveSpeed: 15,
           jumpForce: 20,
-          turnSpeed: 10
+          turnSpeed: 10,
+          heightOffset: 0.1
         }
       },
       'Top-Down View': {
@@ -222,6 +228,15 @@ const config = {
           height: 8,
           verticalAngle: 1.3,
           maxVerticalAngle: 1.4
+        }
+      },
+      'Floating Character': {
+        character: {
+          heightOffset: 1,
+          jumpForce: 6
+        },
+        physics: {
+          gravity: -15
         }
       }
     }
@@ -347,6 +362,7 @@ cameraFolder.add(config.camera, 'reset').name('Reset Camera Settings');
 characterFolder.add(config.character, 'moveSpeed', 1, 20, 0.5).name('Move Speed');
 characterFolder.add(config.character, 'jumpForce', 5, 30, 1).name('Jump Force');
 characterFolder.add(config.character, 'turnSpeed', 1, 15, 0.5).name('Turn Speed');
+characterFolder.add(config.character, 'heightOffset', -2, 2, 0.1).name('Height Offset');
 characterFolder.add(config.character, 'reset').name('Reset Character Settings');
 
 // Setup physics controls
@@ -867,7 +883,11 @@ function handleCharacterMovement(deltaTime) {
   
   // Get the updated position from physics and apply to character mesh
   const position = characterBody.translation();
-  character.position.set(position.x, position.y - 0.5, position.z); // Offset Y to account for capsule center
+  character.position.set(
+    position.x, 
+    position.y - 0.5 + config.character.heightOffset, // Apply height offset here
+    position.z
+  ); // Offset Y to account for capsule center
   
   // Rotate the character to face the movement direction, only if moving
   if (Math.abs(moveDirection.x) > 0.1 || Math.abs(moveDirection.z) > 0.1) {
@@ -1050,6 +1070,9 @@ async function init() {
       <p>ESC to release mouse control</p>
     `;
     document.body.appendChild(instructions);
+    
+    // Hide instructions by default
+    instructions.style.display = 'none';
     
     // Add a button to toggle instructions
     const toggleButton = document.createElement('button');
