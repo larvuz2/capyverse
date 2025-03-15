@@ -172,6 +172,27 @@ class ThirdPersonCamera {
   }
   
   /**
+   * Update camera rotation directly (for touch controls)
+   * @param {Object} movement - Object with x and y properties representing rotation deltas
+   */
+  updateRotation(movement) {
+    if (!movement) return;
+    
+    // Update horizontal angle (rotation around Y axis)
+    this.horizontalAngle -= movement.x;
+    
+    // Update vertical angle (rotation around X axis)
+    this.verticalAngle = Math.max(
+      this.minVerticalAngle,
+      Math.min(this.maxVerticalAngle, this.verticalAngle + movement.y)
+    );
+    
+    // Create quaternion from euler angles
+    const euler = new THREE.Euler(this.verticalAngle, this.horizontalAngle, 0, 'YXZ');
+    this.rotationQuaternion.setFromEuler(euler);
+  }
+  
+  /**
    * Main update method called from animation loop
    */
   update(deltaTime = 1/60, mouseDelta = null) {
@@ -180,8 +201,12 @@ class ThirdPersonCamera {
       return;
     }
     
-    // Update camera angles and position
-    this.updateAngles(mouseDelta);
+    // Apply mouse movement to rotation if provided
+    if (mouseDelta) {
+      this.updateRotation(mouseDelta);
+    }
+    
+    // Update camera position with current rotation
     this.updatePosition(deltaTime);
   }
   

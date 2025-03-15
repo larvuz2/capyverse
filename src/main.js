@@ -6,6 +6,8 @@ import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import ThirdPersonCamera from './ThirdPersonCamera.js';
 import InputManager from './utils/InputManager.js';
 import NatureEnvironment from './NatureEnvironment.js';
+import { isMobileDevice } from './utils/DeviceDetector.js';
+import MobileJoystick from './utils/MobileControls.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -547,6 +549,10 @@ let orangeColliderIds = []; // Array to store collider IDs for multiple oranges
 const orangeCount = 10; // Number of oranges to create
 const loader = new GLTFLoader();
 
+// Add mobile joystick variables
+let mobileJoystick = null;
+let isMobile = false;
+
 async function initPhysics() {
   try {
     // Create a physics world with gravity from config
@@ -951,11 +957,43 @@ function handleCharacterMovement(deltaTime) {
   // Default to no movement (will be overridden by keys if pressed)
   let moveDirection = new THREE.Vector3(0, 0, 0);
   
-  // Apply input to movement direction
-  if (keys.w) moveDirection.z = -1;
-  if (keys.s) moveDirection.z = 1;
-  if (keys.a) moveDirection.x = -1;
-  if (keys.d) moveDirection.x = 1;
+  // Apply input from keyboard or joystick to movement direction
+  if (isMobile && mobileJoystick && mobileJoystick.getIsActive()) {
+    // Use joystick input when on mobile
+    const movementData = mobileJoystick.getMovementData();
+    const joystickPosition = movementData.position;
+    
+    // Use distance as a measure of intensity/speed
+    const intensity = movementData.distance;
+    
+    // Apply direction and intensity with platform-specific adjustments
+    moveDirection.x = joystickPosition.x;
+    moveDirection.z = -joystickPosition.y; // Invert Y for forward/backward
+    
+    // Apply non-linear acceleration curve for smoother control
+    // This makes small movements more precise while still allowing fast movement
+    const accelerationCurve = (value) => {
+      // Apply a quadratic curve for more precise control around center
+      // Move more gradually at first, then accelerate
+      const sign = Math.sign(value);
+      return sign * (value * value);
+    };
+    
+    // Apply the acceleration curve to x and z components
+    moveDirection.x = accelerationCurve(moveDirection.x);
+    moveDirection.z = accelerationCurve(moveDirection.z);
+    
+    // If joystick is active and moved, bring it back to full opacity
+    if (intensity > 0 && mobileJoystick.visible) {
+      mobileJoystick.fadeInJoystick();
+    }
+  } else {
+    // Use keyboard input on desktop or when joystick not used
+    if (keys.w) moveDirection.z = -1;
+    if (keys.s) moveDirection.z = 1;
+    if (keys.a) moveDirection.x = -1;
+    if (keys.d) moveDirection.x = 1;
+  }
   
   // Normalize the direction vector to prevent diagonal movement from being faster
   if (moveDirection.length() > 0) {
@@ -1008,8 +1046,12 @@ function handleCharacterMovement(deltaTime) {
     const currentAngle = character.rotation.y;
     const angleDiff = (targetAngle - currentAngle + Math.PI) % (Math.PI * 2) - Math.PI;
     
-    // Use turnSpeed from config for rotation speed
-    character.rotation.y += angleDiff * Math.min(1, config.character.turnSpeed * deltaTime);
+    // Use turnSpeed from config for rotation speed with smoother turning on mobile
+    const turnSpeed = isMobile ? 
+      config.character.turnSpeed * 1.5 : // Increase turn speed on mobile
+      config.character.turnSpeed;
+    
+    character.rotation.y += angleDiff * Math.min(1, turnSpeed * deltaTime);
   }
 }
 
@@ -1201,7 +1243,42 @@ async function init() {
     // Load models
     await loadModels();
     
+    // Check if we're on a mobile device and get device info
+    isMobile = isMobileDevice();
+    let deviceInfo = null;
+    
+    if (isMobile) {
+      deviceInfo = getMobileDeviceInfo();
+      console.log('Mobile device detected:', deviceInfo);
+      
+      // Add mobile device class to body for CSS optimizations
+      document.body.classList.add('mobile-device');
+      
+      // Add device-specific classes
+      if (deviceInfo.os === 'iOS') {
+        document.body.classList.add('ios-device');
+      } else if (deviceInfo.os === 'Android') {
+        document.body.classList.add('android-device');
+      }
+      
+      // Apply orientation specific class
+      const orientation = getDeviceOrientation();
+      document.body.classList.add(`orientation-${orientation}`);
+      
+      // Monitor for orientation changes
+      addOrientationChangeListener((newOrientation) => {
+        document.body.classList.remove('orientation-portrait', 'orientation-landscape');
+        document.body.classList.add(`orientation-${newOrientation}`);
+        
+        // Resize renderer and update camera on orientation change
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+    
     // Initialize Input Manager for camera controls
+    // Only initialize on desktop or when we need mouse movement
     inputManager = new InputManager(renderer.domElement);
     inputManager.sensitivity = config.camera.rotationSpeed;
     
@@ -1214,6 +1291,57 @@ async function init() {
       minVerticalAngle: config.camera.minVerticalAngle,
       maxVerticalAngle: config.camera.maxVerticalAngle
     });
+    
+    // Initialize mobile joystick if on a mobile device
+    if (isMobile) {
+      console.log('Initializing mobile controls');
+      
+      // Check for device capabilities to determine optimal settings
+      const isHighEndDevice = deviceInfo && 
+        ((deviceInfo.os === 'iOS' && parseInt(deviceInfo.version) >= 13) || 
+         (deviceInfo.os === 'Android' && parseInt(deviceInfo.version) >= 10));
+      
+      const useBatterySaving = deviceInfo && deviceInfo.batteryLevel && deviceInfo.batteryLevel < 0.3;
+      
+      // Create the joystick with enhanced settings
+      mobileJoystick = new MobileJoystick({
+        baseSize: 150,             // Slightly larger for easier use
+        knobSize: 75,              // Maintain proportion
+        baseOpacity: 0.5,          // Set to 50% opacity
+        knobOpacity: 0.5,          // Set to 50% opacity
+        activeBaseOpacity: 0.5,    // Set to 50% opacity
+        activeKnobOpacity: 0.5,    // Set to 50% opacity
+        deadZone: 0.08,            // 8% dead zone for better control
+        autoHide: true,            // Enable auto-hide feature
+        autoHideDelay: 5000,       // Hide after 5 seconds of inactivity
+        usePerformanceMode: true,  // Enable performance optimizations
+        smoothing: isHighEndDevice ? 0.7 : 0.5, // More smoothing on high-end devices
+        batteryOptimized: useBatterySaving // Enable battery optimizations if needed
+      });
+      
+      // Initialize and add to the DOM if successful
+      if (mobileJoystick.init()) {
+        mobileJoystick.appendToDOM();
+        mobileJoystick.show();
+        
+        // Add swipe camera control for mobile
+        setupMobileCameraControl();
+      }
+      
+      // Update help text for mobile
+      const instructions = document.getElementById('instructions');
+      if (instructions) {
+        const deviceType = deviceInfo ? deviceInfo.os : 'Mobile';
+        
+        instructions.innerHTML = `
+          <h2>${deviceType} Controls</h2>
+          <p>Use the joystick in the bottom left to move</p>
+          <p>Swipe on the right side of screen to look around</p>
+          <p>Touch the joystick again if it becomes transparent</p>
+          <p>Use landscape mode for best experience</p>
+        `;
+      }
+    }
     
     // Update GUI with actual camera values (in case they were modified during initialization)
     config.camera.distance = thirdPersonCamera.distance;
@@ -1241,16 +1369,20 @@ async function init() {
     instructions.style.fontFamily = 'Arial, sans-serif';
     instructions.style.fontSize = '14px';
     instructions.style.zIndex = '100';
-    instructions.innerHTML = `
-      <h2>Camera Controls</h2>
-      <p>Click to enable camera control</p>
-      <p>Move mouse to look around</p>
-      <p>WASD to move, SPACE to jump</p>
-      <p>Press R to reset camera position</p>
-      <p>Press G to toggle GUI controls</p>
-      <p>Press T to toggle camera debug mode</p>
-      <p>ESC to release mouse control</p>
-    `;
+    
+    if (!isMobile) {
+      instructions.innerHTML = `
+        <h2>Camera Controls</h2>
+        <p>Click to enable camera control</p>
+        <p>Move mouse to look around</p>
+        <p>WASD to move, SPACE to jump</p>
+        <p>Press R to reset camera position</p>
+        <p>Press G to toggle GUI controls</p>
+        <p>Press T to toggle camera debug mode</p>
+        <p>ESC to release mouse control</p>
+      `;
+    }
+    
     document.body.appendChild(instructions);
     
     // Hide instructions by default
@@ -1272,6 +1404,12 @@ async function init() {
     });
     document.body.appendChild(toggleButton);
     
+    // Make button larger on mobile for easier tapping
+    if (isMobile) {
+      toggleButton.style.padding = '12px';
+      toggleButton.style.fontSize = '16px';
+    }
+    
     // Start the animation loop
     animate();
     
@@ -1281,7 +1419,202 @@ async function init() {
   }
 }
 
-init();
+/**
+ * Setup camera control for mobile devices
+ * Adds a touch area on the right side of the screen for camera rotation
+ */
+function setupMobileCameraControl() {
+  if (!isMobile) return;
+  
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let currentTouchId = null;
+  let touchActive = false;
+  let lastUpdateTime = 0;
+  let animationFrameId = null;
+  
+  // Create a visual indicator for the touch area (right side of screen)
+  const cameraControlArea = document.createElement('div');
+  cameraControlArea.id = 'camera-control-area';
+  cameraControlArea.style.position = 'absolute';
+  cameraControlArea.style.right = '0';
+  cameraControlArea.style.top = '0';
+  cameraControlArea.style.width = '50%';
+  cameraControlArea.style.height = '100%';
+  cameraControlArea.style.zIndex = '999';
+  cameraControlArea.style.opacity = '0';
+  cameraControlArea.style.pointerEvents = 'none'; // Only for visual purposes
+  document.body.appendChild(cameraControlArea);
+  
+  // Create a touch indicator element to show where the user is touching
+  const touchIndicator = document.createElement('div');
+  touchIndicator.className = 'touch-indicator';
+  touchIndicator.style.position = 'absolute';
+  touchIndicator.style.width = '40px';
+  touchIndicator.style.height = '40px';
+  touchIndicator.style.borderRadius = '50%';
+  touchIndicator.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+  touchIndicator.style.transform = 'translate(-50%, -50%)';
+  touchIndicator.style.display = 'none';
+  touchIndicator.style.pointerEvents = 'none';
+  touchIndicator.style.zIndex = '1002';
+  document.body.appendChild(touchIndicator);
+  
+  // Use requestAnimationFrame for smoother updates
+  function updateCameraRotation() {
+    if (!touchActive) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+      return;
+    }
+    
+    // Throttle updates for performance
+    const now = performance.now();
+    const elapsed = now - lastUpdateTime;
+    
+    if (elapsed >= 16) { // Cap at ~60fps
+      lastUpdateTime = now;
+      
+      // Check if thirdPersonCamera exists
+      if (thirdPersonCamera) {
+        // Apply the rotation based on touch movement
+        const sensitivity = config.camera.rotationSpeed * 10; // Adjust for touch
+        
+        // Calculate delta relative to screen size for consistent experience across devices
+        const screenSize = Math.min(window.innerWidth, window.innerHeight);
+        const deltaX = touchDeltaX * (sensitivity / screenSize);
+        const deltaY = touchDeltaY * (sensitivity / screenSize);
+        
+        // Update camera rotation
+        thirdPersonCamera.updateRotation({
+          x: deltaX,
+          y: deltaY
+        });
+      }
+    }
+    
+    // Continue the animation loop
+    animationFrameId = requestAnimationFrame(updateCameraRotation);
+  }
+  
+  // Variables for tracking movement between frames
+  let touchDeltaX = 0;
+  let touchDeltaY = 0;
+  
+  // Handle touch events on the right half of the screen for camera rotation
+  document.addEventListener('touchstart', (event) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    
+    // Only process touches on the right half of the screen
+    if (touch.clientX > window.innerWidth / 2) {
+      // Store the touch start position
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      currentTouchId = touch.identifier;
+      touchActive = true;
+      touchDeltaX = 0;
+      touchDeltaY = 0;
+      
+      // Show touch indicator at touch point
+      touchIndicator.style.display = 'block';
+      touchIndicator.style.left = touch.clientX + 'px';
+      touchIndicator.style.top = touch.clientY + 'px';
+      
+      // Visual feedback (subtle)
+      cameraControlArea.style.opacity = '0.1';
+      cameraControlArea.style.background = 'radial-gradient(circle at ' + 
+        (touch.clientX - window.innerWidth/2) + 'px ' + touch.clientY + 
+        'px, rgba(255,255,255,0.2), transparent 50%)';
+      
+      // Start animation loop for smooth updates
+      if (!animationFrameId) {
+        lastUpdateTime = performance.now();
+        animationFrameId = requestAnimationFrame(updateCameraRotation);
+      }
+    }
+  }, { passive: true });
+  
+  document.addEventListener('touchmove', (event) => {
+    // Find our specific touch
+    let touch = null;
+    for (let i = 0; i < event.touches.length; i++) {
+      if (event.touches[i].identifier === currentTouchId) {
+        touch = event.touches[i];
+        break;
+      }
+    }
+    
+    // If touch not found or not on right side, do nothing
+    if (!touch || touch.clientX <= window.innerWidth / 2 || !touchActive) return;
+    
+    // Calculate the delta from previous position
+    touchDeltaX = touch.clientX - touchStartX;
+    touchDeltaY = touch.clientY - touchStartY;
+    
+    // Move touch indicator to follow the touch
+    touchIndicator.style.left = touch.clientX + 'px';
+    touchIndicator.style.top = touch.clientY + 'px';
+    
+    // Update visual feedback gradient
+    cameraControlArea.style.background = 'radial-gradient(circle at ' + 
+      (touch.clientX - window.innerWidth/2) + 'px ' + touch.clientY + 
+      'px, rgba(255,255,255,0.2), transparent 50%)';
+    
+    // Update start position for next delta calculation
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  }, { passive: true });
+  
+  function endTouch(event) {
+    // Check if this is our tracked touch
+    let touchFound = false;
+    
+    if (event.changedTouches) {
+      for (let i = 0; i < event.changedTouches.length; i++) {
+        if (event.changedTouches[i].identifier === currentTouchId) {
+          touchFound = true;
+          break;
+        }
+      }
+    } else {
+      touchFound = true; // For touchcancel, assume it's our touch
+    }
+    
+    if (touchFound && touchActive) {
+      // Reset the touch tracking
+      currentTouchId = null;
+      touchActive = false;
+      touchDeltaX = 0;
+      touchDeltaY = 0;
+      
+      // Hide touch indicator
+      touchIndicator.style.display = 'none';
+      
+      // Remove visual feedback
+      cameraControlArea.style.opacity = '0';
+      setTimeout(() => {
+        if (!touchActive) {
+          cameraControlArea.style.background = 'none';
+        }
+      }, 300);
+    }
+  }
+  
+  document.addEventListener('touchend', endTouch, { passive: true });
+  document.addEventListener('touchcancel', endTouch, { passive: true });
+  
+  // Handle visibility changes to pause the animation
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      touchActive = false;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+    }
+  });
+}
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -1354,3 +1687,5 @@ function updateOrangesSize() {
     }
   }
 }
+
+init();
