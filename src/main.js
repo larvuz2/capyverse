@@ -514,23 +514,8 @@ async function initPhysics() {
     // Create a physics world with gravity from config
     world = new rapier.World({ x: 0.0, y: config.physics.gravity, z: 0.0 });
     
-    // Set up collision event handler
-    world.setContactPairHandler({
-      hasBegunContact: function(collider1, collider2) {
-        // Check if this is a character-orange collision
-        const isCharacter = collider1.handle === characterColliderId || collider2.handle === characterColliderId;
-        const orangeIndex = orangeColliderIds.findIndex(id => 
-          collider1.handle === id || collider2.handle === id
-        );
-        
-        if (isCharacter && orangeIndex !== -1) {
-          handleOrangeCollision(orangeIndex);
-        }
-      },
-      hasSeparated: function(collider1, collider2) {
-        // Optional: handle separation events if needed
-      }
-    });
+    // Remove the setContactPairHandler that's causing errors
+    // Instead, we'll check for collisions manually in the animation loop
     
     // Ground
     const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0)
@@ -645,8 +630,8 @@ async function loadOrangeModel() {
       const posY = 1 + Math.random() * 2; // Random height between 1 and 3
       const posZ = Math.random() * 20 - 10; // Random position between -10 and 10
       
-      // Position and scale the orange
-      orangeInstance.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+      // Position and scale the orange - scale down by 20x as requested
+      orangeInstance.scale.set(0.025, 0.025, 0.025); // Reduced from 0.5 to 0.025
       orangeInstance.castShadow = true;
       orangeInstance.position.set(posX, posY, posZ);
       
@@ -1007,6 +992,34 @@ function animate() {
       }
       if (groundCollider.restitution() !== config.physics.restitution) {
         groundCollider.setRestitution(config.physics.restitution);
+      }
+    }
+    
+    // Manual collision detection between character and oranges
+    if (characterBody) {
+      const characterPos = characterBody.translation();
+      
+      // Check each orange for collision with character
+      for (let i = 0; i < orangeBodies.length; i++) {
+        const orangeBody = orangeBodies[i];
+        if (!orangeBody) continue;
+        
+        const orangePos = orangeBody.translation();
+        
+        // Calculate distance between character and orange
+        const dx = characterPos.x - orangePos.x;
+        const dy = characterPos.y - orangePos.y;
+        const dz = characterPos.z - orangePos.z;
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        
+        // If distance is less than sum of radii, we have a collision
+        const characterRadius = 0.5; // Approximation
+        const orangeRadius = 0.3;
+        
+        if (distance < (characterRadius + orangeRadius)) {
+          // Handle the collision
+          handleOrangeCollision(i);
+        }
       }
     }
   }
