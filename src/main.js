@@ -494,13 +494,43 @@ let isGrounded = true;
 let wasMoving = false;
 let wasGrounded = true;
 
+// Collision detection flags and data
+let characterColliderId = null;
+let orangeColliderId = null;
+let collisionForce = 3.0; // Adjustable force factor for orange collisions
+
 // Global variables
 let natureEnvironment;
+let mixer, idleAction, walkAction, jumpAction, activeAction;
+let character;
+let oranges = []; // Change to array for multiple oranges
+let orangeBodies = []; // Change to array for multiple orange physics bodies
+let orangeColliderIds = []; // Array to store collider IDs for multiple oranges
+const orangeCount = 10; // Number of oranges to create
+const loader = new GLTFLoader();
 
 async function initPhysics() {
   try {
     // Create a physics world with gravity from config
     world = new rapier.World({ x: 0.0, y: config.physics.gravity, z: 0.0 });
+    
+    // Set up collision event handler
+    world.setContactPairHandler({
+      hasBegunContact: function(collider1, collider2) {
+        // Check if this is a character-orange collision
+        const isCharacter = collider1.handle === characterColliderId || collider2.handle === characterColliderId;
+        const orangeIndex = orangeColliderIds.findIndex(id => 
+          collider1.handle === id || collider2.handle === id
+        );
+        
+        if (isCharacter && orangeIndex !== -1) {
+          handleOrangeCollision(orangeIndex);
+        }
+      },
+      hasSeparated: function(collider1, collider2) {
+        // Optional: handle separation events if needed
+      }
+    });
     
     // Ground
     const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0)
@@ -516,9 +546,6 @@ async function initPhysics() {
 }
 
 // Character and animations
-let mixer, idleAction, walkAction, jumpAction, activeAction;
-let character;
-const loader = new GLTFLoader();
 
 // Temporary capybara box for testing
 function createTemporaryCapybara() {
@@ -563,7 +590,10 @@ async function loadModels() {
     characterBody = world.createRigidBody(rigidBodyDesc);
     
     const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
-    world.createCollider(characterColliderDesc, characterBody);
+    const characterCollider = world.createCollider(characterColliderDesc, characterBody);
+    
+    // Store character collider ID for collision detection
+    characterColliderId = characterCollider.handle;
     
     // Load animations
     mixer = new THREE.AnimationMixer(character);
@@ -590,11 +620,66 @@ async function loadModels() {
     activeAction = idleAction;
     idleAction.play();
     
+    // Load the orange model
+    await loadOrangeModel();
+    
     console.log("Models loaded successfully");
   } catch (error) {
     console.error("Error loading models:", error);
     // Fallback to temporary capybara if loading fails
     createTemporaryCapybara();
+  }
+}
+
+// Load orange model
+async function loadOrangeModel() {
+  try {
+    // Create multiple oranges
+    for (let i = 0; i < orangeCount; i++) {
+      // Load the orange model
+      const orangeModel = await loader.loadAsync('./assets/orange.glb');
+      const orangeInstance = orangeModel.scene.clone();
+      
+      // Generate random position around the scene
+      const posX = Math.random() * 20 - 10; // Random position between -10 and 10
+      const posY = 1 + Math.random() * 2; // Random height between 1 and 3
+      const posZ = Math.random() * 20 - 10; // Random position between -10 and 10
+      
+      // Position and scale the orange
+      orangeInstance.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+      orangeInstance.castShadow = true;
+      orangeInstance.position.set(posX, posY, posZ);
+      
+      // Add the orange to the scene
+      scene.add(orangeInstance);
+      oranges.push(orangeInstance);
+      
+      // Create physics body for the orange
+      const orangeRigidBodyDesc = rapier.RigidBodyDesc.dynamic()
+        .setTranslation(posX, posY, posZ) // Same position as the visual model
+        .setLinearDamping(0.5) // Add some damping to make it feel more realistic
+        .setAngularDamping(0.5); // Add angular damping for rotation
+      
+      const orangeBody = world.createRigidBody(orangeRigidBodyDesc);
+      orangeBodies.push(orangeBody);
+      
+      // Create a spherical collider for the orange
+      const orangeRadius = 0.3; // Adjust based on your orange model size
+      const orangeColliderDesc = rapier.ColliderDesc.ball(orangeRadius)
+        .setFriction(0.7) // Higher friction to roll naturally
+        .setRestitution(0.4) // Some bounciness
+        .setDensity(2.0); // Make it feel like an orange (slightly dense)
+      
+      const orangeCollider = world.createCollider(orangeColliderDesc, orangeBody);
+      
+      // Store orange collider ID for collision detection
+      orangeColliderIds.push(orangeCollider.handle);
+    }
+    
+    console.log(`${orangeCount} orange models loaded successfully with physics`);
+    
+  } catch (error) {
+    console.error("Error loading orange models:", error);
   }
 }
 
@@ -929,6 +1014,9 @@ function animate() {
   // Update character position and movement
   handleCharacterMovement(delta);
   
+  // Update orange position from physics
+  updateOrangePosition();
+  
   // Check if character is grounded
   if (characterBody && world) {
     const position = characterBody.translation();
@@ -1000,6 +1088,45 @@ function animate() {
   
   // Render the scene
   renderer.render(scene, camera);
+}
+
+// Update orange position and rotation based on physics
+function updateOrangePosition() {
+  // Update all oranges
+  for (let i = 0; i < oranges.length; i++) {
+    const orangeModel = oranges[i];
+    const orangeBody = orangeBodies[i];
+    
+    if (!orangeModel || !orangeBody) continue;
+    
+    // Get the position from the physics body
+    const position = orangeBody.translation();
+    
+    // Update the 3D model position
+    orangeModel.position.set(position.x, position.y, position.z);
+    
+    // Get the rotation from the physics body (as a quaternion)
+    const rotation = orangeBody.rotation();
+    
+    // Convert quaternion to Euler angles for Three.js
+    const quaternion = new THREE.Quaternion(
+      rotation.x,
+      rotation.y,
+      rotation.z,
+      rotation.w
+    );
+    orangeModel.quaternion.copy(quaternion);
+    
+    // Optional: Check if orange fell below the ground plane
+    if (position.y < -10) {
+      // Reset orange position if it falls out of bounds
+      const posX = Math.random() * 20 - 10;
+      const posZ = Math.random() * 20 - 10;
+      orangeBody.setTranslation({ x: posX, y: 3, z: posZ }, true);
+      orangeBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      orangeBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+  }
 }
 
 // Initialize and start
@@ -1107,3 +1234,55 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// Handle collision between character and orange
+function handleOrangeCollision(orangeIndex) {
+  if (orangeIndex < 0 || orangeIndex >= orangeBodies.length || !characterBody) return;
+  
+  const orangeBody = orangeBodies[orangeIndex];
+  if (!orangeBody) return;
+  
+  // Calculate collision direction (character to orange)
+  const characterPos = characterBody.translation();
+  const orangePos = orangeBody.translation();
+  
+  // Get direction vector from character to orange
+  const directionVector = {
+    x: orangePos.x - characterPos.x,
+    y: 0, // Keep force horizontal
+    z: orangePos.z - characterPos.z
+  };
+  
+  // Normalize the direction vector
+  const length = Math.sqrt(directionVector.x * directionVector.x + directionVector.z * directionVector.z);
+  if (length > 0) {
+    directionVector.x /= length;
+    directionVector.z /= length;
+  }
+  
+  // Get character velocity to determine force magnitude
+  const charVelocity = characterBody.linvel();
+  const velocityMagnitude = Math.sqrt(charVelocity.x * charVelocity.x + charVelocity.z * charVelocity.z);
+  
+  // Apply force to the orange based on character velocity and collision force factor
+  const forceMagnitude = Math.max(1.0, velocityMagnitude) * collisionForce;
+  
+  // Calculate final force vector
+  const forceVector = {
+    x: directionVector.x * forceMagnitude,
+    y: 0.5 * forceMagnitude, // Add slight upward force
+    z: directionVector.z * forceMagnitude
+  };
+  
+  // Apply impulse to the orange
+  orangeBody.applyImpulse(forceVector, true);
+  
+  // Optional: Apply a small torque for realistic rotation
+  orangeBody.applyTorqueImpulse({
+    x: Math.random() * 0.5 - 0.25,
+    y: Math.random() * 0.5 - 0.25,
+    z: Math.random() * 0.5 - 0.25
+  }, true);
+  
+  console.log(`Orange ${orangeIndex} collision detected, applied force:`, forceMagnitude);
+}
