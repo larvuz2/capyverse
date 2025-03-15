@@ -1177,7 +1177,7 @@ function updateOrangePosition() {
       // Reset orange position if it falls out of bounds
       const posX = Math.random() * 20 - 10;
       const posZ = Math.random() * 20 - 10;
-      orangeBody.setTranslation({ x: posX, y: config.oranges.heightOffset + 2, z: posZ }, true);
+      orangeBody.setTranslation({ x: posX, y: config.oranges.heightOffset + Math.random() * 2, z: posZ }, true);
       orangeBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
       orangeBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     }
