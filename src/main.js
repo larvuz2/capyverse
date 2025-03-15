@@ -105,6 +105,26 @@ const config = {
       }
     }
   },
+  oranges: {
+    size: 0.025, // Default orange size (already scaled down)
+    collisionForce: 3.0, // Default collision force
+    reset: function() {
+      // Reset orange parameters to defaults
+      config.oranges.size = 0.025;
+      config.oranges.collisionForce = 3.0;
+      
+      // Update oranges with new size
+      updateOrangesSize();
+      
+      // Update collision force
+      collisionForce = config.oranges.collisionForce;
+      
+      // Update all controllers
+      for (const controller of Object.values(orangesFolder.controllers)) {
+        controller.updateDisplay();
+      }
+    }
+  },
   presets: {
     current: 'Default',
     // Apply a specific preset configuration
@@ -259,13 +279,15 @@ const config = {
       const configToSave = {
         camera: { ...config.camera },
         character: { ...config.character },
-        physics: { ...config.physics }
+        physics: { ...config.physics },
+        oranges: { ...config.oranges }
       };
       
       // Remove function properties
       delete configToSave.camera.reset;
       delete configToSave.character.reset;
       delete configToSave.physics.reset;
+      delete configToSave.oranges.reset;
       
       // Save to localStorage
       try {
@@ -287,9 +309,10 @@ const config = {
           if (parsedConfig.camera) Object.assign(config.camera, parsedConfig.camera);
           if (parsedConfig.character) Object.assign(config.character, parsedConfig.character);
           if (parsedConfig.physics) Object.assign(config.physics, parsedConfig.physics);
+          if (parsedConfig.oranges) Object.assign(config.oranges, parsedConfig.oranges);
           
           // Update all controllers
-          for (const folder of [cameraFolder, characterFolder, physicsFolder]) {
+          for (const folder of [cameraFolder, characterFolder, physicsFolder, orangesFolder]) {
             for (const controller of Object.values(folder.controllers)) {
               controller.updateDisplay();
             }
@@ -330,6 +353,7 @@ const config = {
 const cameraFolder = gui.addFolder('Camera');
 const characterFolder = gui.addFolder('Character');
 const physicsFolder = gui.addFolder('Physics');
+const orangesFolder = gui.addFolder('Oranges'); // New folder for orange settings
 const presetsFolder = gui.addFolder('Presets');
 const storageFolder = gui.addFolder('Save/Load');
 const guiControlsFolder = gui.addFolder('GUI Controls');
@@ -372,6 +396,15 @@ physicsFolder.add(config.physics, 'gravity', -30, -1, 0.5).name('Gravity').onCha
 physicsFolder.add(config.physics, 'friction', 0, 1, 0.05).name('Friction');
 physicsFolder.add(config.physics, 'restitution', 0, 1, 0.05).name('Restitution');
 physicsFolder.add(config.physics, 'reset').name('Reset Physics Settings');
+
+// Setup oranges controls
+orangesFolder.add(config.oranges, 'size', 0.005, 0.1, 0.005).name('Orange Size').onChange(value => {
+  updateOrangesSize();
+});
+orangesFolder.add(config.oranges, 'collisionForce', 0.5, 10, 0.5).name('Collision Force').onChange(value => {
+  collisionForce = value;
+});
+orangesFolder.add(config.oranges, 'reset').name('Reset Orange Settings');
 
 // Setup presets controls
 presetsFolder.add(config.presets, 'current', Object.keys(config.presets.list)).name('Current Preset').onChange(value => {
@@ -630,8 +663,12 @@ async function loadOrangeModel() {
       const posY = 1 + Math.random() * 2; // Random height between 1 and 3
       const posZ = Math.random() * 20 - 10; // Random position between -10 and 10
       
-      // Position and scale the orange - scale down by 20x as requested
-      orangeInstance.scale.set(0.025, 0.025, 0.025); // Reduced from 0.5 to 0.025
+      // Position and scale the orange - use the config value for size
+      orangeInstance.scale.set(
+        config.oranges.size,
+        config.oranges.size,
+        config.oranges.size
+      );
       orangeInstance.castShadow = true;
       orangeInstance.position.set(posX, posY, posZ);
       
@@ -1278,7 +1315,7 @@ function handleOrangeCollision(orangeIndex) {
   const velocityMagnitude = Math.sqrt(charVelocity.x * charVelocity.x + charVelocity.z * charVelocity.z);
   
   // Apply force to the orange based on character velocity and collision force factor
-  const forceMagnitude = Math.max(1.0, velocityMagnitude) * collisionForce;
+  const forceMagnitude = Math.max(1.0, velocityMagnitude) * config.oranges.collisionForce;
   
   // Calculate final force vector
   const forceVector = {
@@ -1298,4 +1335,17 @@ function handleOrangeCollision(orangeIndex) {
   }, true);
   
   console.log(`Orange ${orangeIndex} collision detected, applied force:`, forceMagnitude);
+}
+
+// Update all oranges with new size
+function updateOrangesSize() {
+  for (let i = 0; i < oranges.length; i++) {
+    if (oranges[i]) {
+      oranges[i].scale.set(
+        config.oranges.size,
+        config.oranges.size,
+        config.oranges.size
+      );
+    }
+  }
 }
