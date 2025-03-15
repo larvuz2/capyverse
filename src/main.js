@@ -106,12 +106,14 @@ const config = {
     }
   },
   oranges: {
-    size: 0.025, // Default orange size (already scaled down)
-    collisionForce: 3.0, // Default collision force
+    size: 0.0025, // Default orange size changed to 0.0025
+    collisionForce: 0.5, // Default collision force changed to 0.5
+    heightOffset: 1.0, // New parameter: height offset for oranges
     reset: function() {
       // Reset orange parameters to defaults
-      config.oranges.size = 0.025;
-      config.oranges.collisionForce = 3.0;
+      config.oranges.size = 0.0025;
+      config.oranges.collisionForce = 0.5;
+      config.oranges.heightOffset = 1.0;
       
       // Update oranges with new size
       updateOrangesSize();
@@ -398,11 +400,14 @@ physicsFolder.add(config.physics, 'restitution', 0, 1, 0.05).name('Restitution')
 physicsFolder.add(config.physics, 'reset').name('Reset Physics Settings');
 
 // Setup oranges controls
-orangesFolder.add(config.oranges, 'size', 0.005, 0.1, 0.005).name('Orange Size').onChange(value => {
+orangesFolder.add(config.oranges, 'size', 0.0025, 0.1, 0.005).name('Orange Size').onChange(value => {
   updateOrangesSize();
 });
 orangesFolder.add(config.oranges, 'collisionForce', 0.5, 10, 0.5).name('Collision Force').onChange(value => {
   collisionForce = value;
+});
+orangesFolder.add(config.oranges, 'heightOffset', 0, 5, 0.5).name('Height Offset').onChange(value => {
+  // No need for immediate update, will be used when oranges are reset
 });
 orangesFolder.add(config.oranges, 'reset').name('Reset Orange Settings');
 
@@ -660,7 +665,7 @@ async function loadOrangeModel() {
       
       // Generate random position around the scene
       const posX = Math.random() * 20 - 10; // Random position between -10 and 10
-      const posY = 1 + Math.random() * 2; // Random height between 1 and 3
+      const posY = config.oranges.heightOffset + Math.random() * 2; // Use height offset from config
       const posZ = Math.random() * 20 - 10; // Random position between -10 and 10
       
       // Position and scale the orange - use the config value for size
@@ -1172,7 +1177,7 @@ function updateOrangePosition() {
       // Reset orange position if it falls out of bounds
       const posX = Math.random() * 20 - 10;
       const posZ = Math.random() * 20 - 10;
-      orangeBody.setTranslation({ x: posX, y: 3, z: posZ }, true);
+      orangeBody.setTranslation({ x: posX, y: config.oranges.heightOffset + 2, z: posZ }, true);
       orangeBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
       orangeBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     }
