@@ -108,12 +108,12 @@ const config = {
   oranges: {
     size: 0.0025, // Default orange size changed to 0.0025
     collisionForce: 0.5, // Default collision force changed to 0.5
-    heightOffset: 1.0, // New parameter: height offset for oranges
+    heightOffset: 0.5, // Changed from 1.0 to 0.5
     reset: function() {
       // Reset orange parameters to defaults
       config.oranges.size = 0.0025;
       config.oranges.collisionForce = 0.5;
-      config.oranges.heightOffset = 1.0;
+      config.oranges.heightOffset = 0.5; // Changed from 1.0 to 0.5
       
       // Update oranges with new size
       updateOrangesSize();
