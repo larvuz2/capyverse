@@ -2,20 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Capyverse - Capybara Controller</title>
   <style>
     body {
       margin: 0;
       overflow: hidden;
     }
-    #container {
+    #scene-container {
       width: 100%;
       height: 100vh;
     }
     #info {
       position: absolute;
-      top: 10px;
+      top: 5px;
       left: 10px;
       color: white;
       background-color: transparent;
@@ -23,13 +23,40 @@
       border-radius: 5px;
       font-family: Arial, sans-serif;
     }
+    .logo-img {
+      width: 300px;
+      height: auto;
+    }
+    /* Reduce logo size by 50% on mobile and position it higher */
+    @media (max-width: 768px) {
+      .logo-img {
+        width: 150px;
+      }
+      #info {
+        top: 2px;
+      }
+    }
   </style>
+  <link rel="stylesheet" href="/src/styles/mobile.css">
+  <!-- Add Eruda for mobile debugging only in development -->
+  <script>
+    // Only enable Eruda in development or when debug=true in URL
+    const isDevMode = window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.search.includes('debug=true');
+    if (isDevMode) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+      script.onload = function () { eruda.init(); }
+      document.head.appendChild(script);
+    }
+  </script>
 </head>
 <body>
-  <div id="container"></div>
+  <div id="scene-container"></div>
   <div id="info">
-    <img src="https://vbcltontvlbnaawiqegc.supabase.co/storage/v1/object/public/capywebsite//logocapyvibes.png" alt="Capyverse Logo" style="width: 300px; height: auto;">
+    <img class="logo-img" src="https://vbcltontvlbnaawiqegc.supabase.co/storage/v1/object/public/capywebsite//logocapyvibes.png" alt="Capyverse Logo">
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>
-</html> 
+</html>
