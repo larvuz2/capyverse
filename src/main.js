@@ -2,23 +2,45 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import RAPIER from '@dimforge/rapier3d';
+
 // Initialize Rapier physics engine
-const initRapier = async () => {
-  // This function initializes the Rapier physics engine
-  return await RAPIER.init();
-};
+async function initRapier() {
+  try {
+    if (isMobileDevice()) logToDebugPanel('Loading RAPIER WASM module', 'info');
+    rapier = await RAPIER;
+    if (isMobileDevice()) logToDebugPanel('RAPIER WASM loaded successfully', 'info');
+    console.log('RAPIER physics initialized successfully');
+    return rapier;
+  } catch (error) {
+    console.error('Error initializing RAPIER:', error);
+    if (isMobileDevice()) logToDebugPanel(`Error initializing RAPIER: ${error.message}`, 'error');
+    return false;
+  }
+}
 
 // Initialize physics world and components
-const initPhysics = async () => {
-  // Create a new physics world with gravity
-  world = new RAPIER.World({ x: 0.0, y: config.physics.gravity, z: 0.0 });
-  
-  // Mark physics as initialized
-  physicsInitialized = true;
-  
-  console.log("Physics world initialized successfully");
-  return world;
-};
+async function initPhysics() {
+  try {
+    if (!rapier) {
+      console.error('RAPIER not initialized, waiting...');
+      await initRapier();
+    }
+    
+    // Create a physics world with gravity from config
+    world = new rapier.World({ x: 0.0, y: config.physics.gravity, z: 0.0 });
+    
+    // Ground
+    const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0)
+      .setFriction(config.physics.friction)
+      .setRestitution(config.physics.restitution);
+    world.createCollider(groundColliderDesc);
+    
+    physicsInitialized = true;
+    console.log("Physics initialized successfully");
+  } catch (error) {
+    console.error("Error initializing physics:", error);
+  }
+}
 
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import ThirdPersonCamera from './ThirdPersonCamera.js';
