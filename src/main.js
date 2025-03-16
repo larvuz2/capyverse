@@ -1331,7 +1331,8 @@ async function init() {
     
     // Initialize mobile joystick if on a mobile device
     if (isMobile) {
-      console.log('Initializing mobile controls');
+      console.log('DEBUG: isMobile = true, initializing mobile controls');
+      console.log('DEBUG: User agent:', navigator.userAgent);
       
       // Check for device capabilities to determine optimal settings
       const isHighEndDevice = deviceInfo && 
@@ -1339,6 +1340,10 @@ async function init() {
          (deviceInfo.os === 'Android' && parseInt(deviceInfo.version) >= 10));
       
       const useBatterySaving = deviceInfo && deviceInfo.batteryLevel && deviceInfo.batteryLevel < 0.3;
+      
+      console.log('DEBUG: Device info:', deviceInfo);
+      console.log('DEBUG: isHighEndDevice:', isHighEndDevice);
+      console.log('DEBUG: useBatterySaving:', useBatterySaving);
       
       // Create the joystick with enhanced settings
       mobileJoystick = new MobileJoystick({
@@ -1356,13 +1361,49 @@ async function init() {
         batteryOptimized: useBatterySaving // Enable battery optimizations if needed
       });
       
+      console.log('DEBUG: MobileJoystick created, calling init()');
+      
       // Initialize and add to the DOM if successful
-      if (mobileJoystick.init()) {
+      const initResult = mobileJoystick.init();
+      console.log('DEBUG: mobileJoystick.init() result:', initResult);
+      
+      if (initResult) {
+        console.log('DEBUG: Calling mobileJoystick.appendToDOM()');
         mobileJoystick.appendToDOM();
+        
+        console.log('DEBUG: Calling mobileJoystick.show()');
         mobileJoystick.show();
         
         // Add swipe camera control for mobile
+        console.log('DEBUG: Setting up mobile camera control');
         setupMobileCameraControl();
+        
+        // Failsafe to ensure joystick is visible after a delay
+        setTimeout(() => {
+          console.log('DEBUG: Failsafe - Ensuring joystick is visible');
+          if (mobileJoystick) {
+            const joystickContainer = document.querySelector('.mobile-controls');
+            if (joystickContainer) {
+              console.log('DEBUG: Found joystick container, forcing display');
+              joystickContainer.style.display = 'block';
+              
+              // Also ensure base visibility and position
+              const joystickBase = document.querySelector('.joystick-base');
+              if (joystickBase) {
+                console.log('DEBUG: Found joystick base, setting position');
+                joystickBase.style.right = '80px';
+                joystickBase.style.left = 'auto';
+                joystickBase.style.display = 'block';
+              } else {
+                console.log('DEBUG: Joystick base not found!');
+              }
+            } else {
+              console.log('DEBUG: Joystick container not found!');
+            }
+          }
+        }, 1000); // 1 second delay
+      } else {
+        console.error('DEBUG: Failed to initialize mobile joystick');
       }
       
       // Update help text for mobile
