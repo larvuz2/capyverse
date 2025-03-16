@@ -3,6 +3,7 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 
 export default defineConfig({
+  base: process.env.NODE_ENV === 'production' ? '/capyverse/' : '/',
   plugins: [
     wasm(),
     topLevelAwait()
@@ -15,9 +16,9 @@ export default defineConfig({
   resolve: {
     extensions: ['.js', '.json'],
     alias: {
-      '@': '/src', // Shortcut for importing from /src (e.g. '@/components')
-      'models': '/models', // For easier model imports
-      'public': '/public' // For public assets
+      '@': './src', // Shortcut for importing from /src (e.g. '@/components')
+      'models': './models', // For easier model imports
+      'public': './public' // For public assets
     }
   },
   optimizeDeps: {
