@@ -16,14 +16,28 @@
     #info {
       position: absolute;
       top: 10px;
-      left: 0;
-      right: 0;
-      text-align: center;
+      padding: 10px;
       color: white;
       background-color: transparent;
-      padding: 10px;
       border-radius: 5px;
       font-family: Arial, sans-serif;
+    }
+    
+    /* Mobile styles (centered logo) */
+    @media (max-width: 1024px) {
+      #info {
+        left: 0;
+        right: 0;
+        text-align: center;
+      }
+    }
+    
+    /* Desktop styles (left-aligned logo) */
+    @media (min-width: 1025px) {
+      #info {
+        left: 10px;
+        text-align: left;
+      }
     }
   </style>
   <link rel="stylesheet" href="/src/styles/mobile.css">
