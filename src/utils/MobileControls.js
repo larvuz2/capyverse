@@ -156,13 +156,13 @@ class MobileJoystick {
       // Position in the lower right corner for portrait
       this.base.style.bottom = '30px';
       this.base.style.left = 'auto';
-      this.base.style.right = '30px';
+      this.base.style.right = '40px';
       console.log('MobileJoystick: DEBUG - Positioned in lower right (portrait)');
     } else {
       // Landscape orientation - position in the lower right corner
       this.base.style.bottom = '20px';
       this.base.style.left = 'auto';
-      this.base.style.right = '20px';
+      this.base.style.right = '30px';
       console.log('MobileJoystick: DEBUG - Positioned in lower right (landscape)');
     }
   }
