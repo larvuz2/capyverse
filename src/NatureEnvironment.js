@@ -28,13 +28,6 @@ export default class NatureEnvironment {
         pairDistance: 0.8, // Average distance between rocks in a pair
         roughness: 0.7,    // Material roughness
       },
-      ponds: {
-        count: 15,          // Number of ponds to generate
-        minRadius: 2,       // Minimum pond radius
-        maxRadius: 5,       // Maximum pond radius
-        depth: 0.3,         // Depth of the pond
-        waterColor: 0x3498DB // Brighter blue color for visibility
-      },
       clouds: {
         count: 20,
         minHeight: 25,
@@ -50,7 +43,6 @@ export default class NatureEnvironment {
       terrain: null,
       trees: [],
       rocks: [],
-      ponds: [],
       clouds: [],
     };
     
@@ -63,7 +55,6 @@ export default class NatureEnvironment {
     this.createTerrain();
     this.createTrees();
     this.createRocks();
-    this.createPonds();
     this.createClouds();
     return this;
   }
@@ -319,139 +310,6 @@ export default class NatureEnvironment {
     return group;
   }
   
-  // Create ponds distributed across the terrain
-  createPonds() {
-    const { count, minRadius, maxRadius, depth, waterColor } = this.config.ponds;
-    const { width, height } = this.config.terrain;
-    
-    // Reduced minimum distances to allow more pond placement
-    const minDistanceToTree = 3; // Minimum distance to trees
-    const minDistanceToRock = 2; // Minimum distance to rocks
-    
-    // Try to place ponds with collision detection
-    let attempts = 0;
-    let placedCount = 0;
-    
-    console.log("Attempting to place ponds...");
-    
-    while (placedCount < count && attempts < count * 10) {
-      attempts++;
-      
-      // Random position for the pond center
-      const centerX = (Math.random() - 0.5) * width * 0.8; // Keep away from edges
-      const centerZ = (Math.random() - 0.5) * height * 0.8;
-      
-      // For flat terrain, y is always 0
-      const y = 0;
-      
-      // Random pond size
-      const radius = minRadius + Math.random() * (maxRadius - minRadius);
-      
-      // Check collision with trees
-      let collidesWithTree = false;
-      for (const tree of this.objects.trees) {
-        const distance = Math.sqrt(
-          Math.pow(tree.position.x - centerX, 2) + 
-          Math.pow(tree.position.z - centerZ, 2)
-        );
-        if (distance < radius + minDistanceToTree) {
-          collidesWithTree = true;
-          break;
-        }
-      }
-      
-      if (collidesWithTree) continue;
-      
-      // Check collision with rocks
-      let collidesWithRock = false;
-      for (const rock of this.objects.rocks) {
-        const distance = Math.sqrt(
-          Math.pow(rock.position.x - centerX, 2) + 
-          Math.pow(rock.position.z - centerZ, 2)
-        );
-        if (distance < radius + minDistanceToRock) {
-          collidesWithRock = true;
-          break;
-        }
-      }
-      
-      if (collidesWithRock) continue;
-      
-      // Create pond
-      const pond = this.createPond(radius, depth, waterColor);
-      // Position almost at ground level for visibility
-      pond.position.set(centerX, 0.01, centerZ); // Barely above ground
-      
-      // Store pond data for animation
-      pond.userData.originalPosition = pond.position.clone();
-      pond.userData.time = Math.random() * Math.PI * 2; // Random start time
-      
-      // Add to scene and store in objects
-      this.scene.add(pond);
-      this.objects.ponds.push(pond);
-      placedCount++;
-    }
-    
-    console.log(`Successfully placed ${placedCount} ponds out of ${count} after ${attempts} attempts`);
-    
-    return this.objects.ponds;
-  }
-  
-  // Create a pond with stylized texture
-  createPond(radius, depth, waterColor) {
-    const group = new THREE.Group();
-    
-    // Create pond base/bed with darker color - make it thinner and lower
-    const bedGeometry = new THREE.CylinderGeometry(radius, radius * 0.95, depth * 0.2, 32);
-    const bedMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1E3B4D, // Darker blue for pond bed
-      roughness: 0.9,
-      metalness: 0.1,
-    });
-    const bed = new THREE.Mesh(bedGeometry, bedMaterial);
-    bed.position.y = -depth * 0.1; // Higher position to be just below surface
-    bed.receiveShadow = true;
-    group.add(bed);
-    
-    // Create water surface with stylized look
-    const waterGeometry = new THREE.CircleGeometry(radius, 32);
-    
-    // Add light blue tint to water color with more saturation
-    const baseColor = new THREE.Color(waterColor);
-    const waterMaterial = new THREE.MeshStandardMaterial({
-      color: baseColor,
-      transparent: true,
-      opacity: 0.85, // Increased opacity for visibility
-      roughness: 0.1, // More reflective
-      metalness: 0.5, // More metallic for water shine
-    });
-    
-    const water = new THREE.Mesh(waterGeometry, waterMaterial);
-    water.rotation.x = -Math.PI / 2; // Make horizontal
-    water.position.y = 0.02; // Very close to ground level
-    water.receiveShadow = true;
-    group.add(water);
-    
-    // Add simple ripple pattern on the water
-    const rippleGeometry = new THREE.CircleGeometry(radius * 0.7, 32);
-    const rippleMaterial = new THREE.MeshStandardMaterial({
-      color: 0xCCE6FF, // Light blue for ripples
-      transparent: true,
-      opacity: 0.4, // Increased opacity for visibility
-      roughness: 0.1,
-      metalness: 0.3,
-    });
-    const ripple = new THREE.Mesh(rippleGeometry, rippleMaterial);
-    ripple.rotation.x = -Math.PI / 2; // Make horizontal
-    ripple.position.y = 0.03; // Just above water
-    group.add(ripple);
-    
-    // Store ripple reference for animation
-    group.userData.ripple = ripple;
-    
-    return group;
-  }
-  
   // Create clouds in the sky
   createClouds() {
     const { count, minHeight, maxHeight, minSize, maxSize } = this.config.clouds;
@@ -552,27 +410,6 @@ export default class NatureEnvironment {
         // Reset to the opposite side
         cloud.position.x = Math.sign(cloud.position.x) * -width * 0.8;
         cloud.position.z = (Math.random() - 0.5) * height;
-      }
-    });
-    
-    // Animate water ripples
-    this.objects.ponds.forEach(pond => {
-      // Update time
-      pond.userData.time += deltaTime * 0.5;
-      
-      // Access the ripple
-      const ripple = pond.userData.ripple;
-      if (ripple) {
-        // Scale the ripple based on sine wave for pulsing effect
-        const scale = 0.7 + Math.sin(pond.userData.time) * 0.2;
-        ripple.scale.set(scale, scale, 1);
-        
-        // Rotate ripple slowly
-        ripple.rotation.z += deltaTime * 0.1;
-        
-        // Change opacity slightly based on cosine wave
-        const material = ripple.material;
-        material.opacity = 0.1 + Math.abs(Math.cos(pond.userData.time * 0.7)) * 0.1;
       }
     });
   }
