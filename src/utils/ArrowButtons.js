@@ -461,4 +461,8 @@ class ArrowButtons {
   }
 }
 
+<<<<<<< HEAD
 export default ArrowButtons; 
+=======
+export default ArrowButtons;
+>>>>>>> 0701ce40650e797fecb4fcee4317649f1e8a3dcf
