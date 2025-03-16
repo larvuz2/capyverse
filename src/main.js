@@ -193,85 +193,103 @@ class RemotePlayer {
     this.modelLoadAttempts++;
     console.log(`Starting model load for player ${this.id} (attempt ${this.modelLoadAttempts})`);
     
-    // Define possible model paths to try
-    const possiblePaths = [
-      './character/capybara.glb',  // Primary path that works for local character
-      './models/capybara.glb',     // Alternative path
-      '/character/capybara.glb',   // Absolute path
-      '/models/capybara.glb'       // Absolute alternative
-    ];
+    // Create an absolute path for the model based on the current window location
+    const baseUrl = window.location.origin;
+    const modelPath = new URL('models/capybara.glb', baseUrl).href;
+    console.log(`Loading model from absolute path: ${modelPath}`);
     
-    // Add absolute URL paths if we're in a browser
-    if (typeof window !== 'undefined') {
-      const baseUrl = window.location.origin;
-      possiblePaths.push(
-        new URL('character/capybara.glb', baseUrl).href,
-        new URL('models/capybara.glb', baseUrl).href
-      );
-    }
-    
-    console.log(`Attempting to load model for player ${this.id} using ModelCache`);
-    
-    // Use the ModelCache to get the model, trying different paths if needed
-    ModelCache.getModelWithFallbacks(possiblePaths)
-      .then(gltf => {
-        console.log(`Model loaded successfully for player ${this.id}`);
-        this.model = gltf.scene;
-        this.model.scale.set(0.5, 0.5, 0.5);
-        
-        // Set initial position and rotation
-        if (this.position) {
-          this.model.position.set(this.position.x, this.position.y, this.position.z);
-          console.log(`Set model position for ${this.id} to:`, this.position);
-        } else {
-          this.model.position.set(0, 1, 0);
-          console.log(`No position provided for ${this.id}, using default`);
+    // Verify model path existence with a HEAD request before attempting to load
+    fetch(modelPath, { method: 'HEAD' })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Model file not found: ${response.status} ${response.statusText}`);
         }
+        console.log(`Model file exists at ${modelPath}, proceeding with load`);
         
-        if (this.rotation) {
-          this.model.rotation.y = this.rotation.y;
-        }
-        
-        this.model.traverse((node) => {
-          if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
+        // Use the same model as the local player
+        const loader = new GLTFLoader();
+        loader.load(modelPath, 
+          // Success callback
+          (gltf) => {
+            console.log(`Model loaded successfully for player ${this.id}`);
+            this.model = gltf.scene;
+            this.model.scale.set(0.5, 0.5, 0.5);
+            
+            // Set initial position and rotation
+            if (this.position) {
+              this.model.position.set(this.position.x, this.position.y, this.position.z);
+              console.log(`Set model position for ${this.id} to:`, this.position);
+            } else {
+              this.model.position.set(0, 1, 0);
+              console.log(`No position provided for ${this.id}, using default`);
+            }
+            
+            if (this.rotation) {
+              this.model.rotation.y = this.rotation.y;
+            }
+            
+            this.model.traverse((node) => {
+              if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+              }
+            });
+            
+            // Create animation mixer
+            this.mixer = new THREE.AnimationMixer(this.model);
+            
+            // Store animations by name
+            gltf.animations.forEach((clip) => {
+              const action = this.mixer.clipAction(clip);
+              this.animations[clip.name] = action;
+            });
+            
+            // Set initial animation
+            this.playAnimation('idle');
+            
+            // Add to scene
+            scene.add(this.model);
+            console.log(`Added model to scene for player ${this.id}`);
+            
+            // Create name label for the actual model
+            this.createNameLabel();
+            
+            // Remove the debug object once the model is loaded
+            this.removeDebugObject();
+          },
+          // Progress callback
+          (xhr) => {
+            if (xhr.total) {
+              console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
+            } else {
+              console.log(`Model ${this.id} loading progress: ${xhr.loaded} bytes loaded`);
+            }
+          },
+          // Error callback
+          (error) => {
+            console.error(`Error loading model for player ${this.id}:`, error);
+            
+            // Check if the model path might be wrong
+            if (error.message && error.message.includes('404')) {
+              console.error(`Model not found at path: ${modelPath}. Trying alternative path...`);
+              // Try alternative paths
+              this.tryAlternativePaths();
+            } else {
+              // Retry loading if under max attempts
+              if (this.modelLoadAttempts < this.maxLoadAttempts) {
+                console.log(`Retrying model load for player ${this.id} in 2 seconds...`);
+                setTimeout(() => this.loadModel(), 2000);
+              } else {
+                console.error(`Failed to load model for player ${this.id} after ${this.maxLoadAttempts} attempts`);
+              }
+            }
           }
-        });
-        
-        // Create animation mixer
-        this.mixer = new THREE.AnimationMixer(this.model);
-        
-        // Store animations by name
-        gltf.animations.forEach((clip) => {
-          const action = this.mixer.clipAction(clip);
-          this.animations[clip.name] = action;
-        });
-        
-        // Set initial animation
-        this.playAnimation('idle');
-        
-        // Add to scene
-        scene.add(this.model);
-        console.log(`Added model to scene for player ${this.id}`);
-        
-        // Create name label for the actual model
-        this.createNameLabel();
-        
-        // Remove the debug object once the model is loaded
-        this.removeDebugObject();
+        );
       })
       .catch(error => {
-        console.error(`Error loading model for player ${this.id}:`, error);
-        
-        // Retry loading if under max attempts with exponential backoff
-        if (this.modelLoadAttempts < this.maxLoadAttempts) {
-          const delay = Math.pow(2, this.modelLoadAttempts) * 1000; // Exponential backoff
-          console.log(`Retrying model load for player ${this.id} in ${delay/1000} seconds...`);
-          setTimeout(() => this.loadModel(), delay);
-        } else {
-          console.error(`Failed to load model for player ${this.id} after ${this.maxLoadAttempts} attempts. Keeping debug cube visible.`);
-        }
+        console.error(`Error checking model path: ${error.message}`);
+        // Try alternative paths if the HEAD request fails
+        this.tryAlternativePaths();
       });
   }
   
@@ -477,7 +495,6 @@ class RemotePlayer {
     if (this.model) {
       this.nameLabel.position.set(0, 1.2, 0); // Position above character
       this.model.add(this.nameLabel);
-      console.log(`Added name label to model for player ${this.id}`);
     }
   }
   
@@ -1098,7 +1115,7 @@ let collisionForce = 3.0; // Adjustable force factor for orange collisions
 
 // Global variables
 let natureEnvironment;
-let mixer, idleAction, walkAction, jumpAction, activeAction, danceAction;
+let mixer, idleAction, walkAction, jumpAction, activeAction;
 let character;
 let oranges = []; // Change to array for multiple oranges
 let orangeBodies = []; // Change to array for multiple orange physics bodies
@@ -1188,10 +1205,8 @@ function createTemporaryCapybara() {
 // Load character and animations
 async function loadModels() {
   try {
-    console.log("Loading character model and animations using ModelCache");
-    
-    // Load the capybara model using the cache system
-    const characterModel = await ModelCache.getModel('./character/capybara.glb');
+    // Load the capybara model
+    const characterModel = await loader.loadAsync('./character/capybara.glb');
     character = characterModel.scene;
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
@@ -1216,104 +1231,93 @@ async function loadModels() {
     // Load animations
     mixer = new THREE.AnimationMixer(character);
     
-    // Load required animations using the cache system
-    console.log("Loading animations using ModelCache");
-    const idleModel = await ModelCache.getModel('./animations/idle.glb');
-    const walkModel = await ModelCache.getModel('./animations/walk.glb');
+    // Load required animations first
+    const idleModel = await loader.loadAsync('./animations/idle.glb');
+    const walkModel = await loader.loadAsync('./animations/walk.glb');
     
     idleAction = mixer.clipAction(idleModel.animations[0]);
     walkAction = mixer.clipAction(walkModel.animations[0]);
     
     // Try to load jump animation, but continue if it fails
     try {
-      const jumpModel = await ModelCache.getModel('./animations/jump.glb');
+      const jumpModel = await loader.loadAsync('./animations/jump.glb');
       jumpAction = mixer.clipAction(jumpModel.animations[0]);
-    } catch (error) {
-      console.warn("Failed to load jump animation:", error);
-      // Set fallback if jump animation fails to load
-      jumpAction = null;
+      console.log("Jump animation loaded successfully");
+    } catch (jumpError) {
+      console.warn("Jump animation not found, using walk animation for jump state:", jumpError);
+      // Use walk animation as fallback for jump
+      jumpAction = walkAction;
     }
     
-    // Try to load dance animation, but continue if it fails
-    try {
-      const danceModel = await ModelCache.getModel('./animations/dance.glb');
-      danceAction = mixer.clipAction(danceModel.animations[0]);
-    } catch (error) {
-      console.warn("Failed to load dance animation:", error);
-      // Set fallback if dance animation fails to load
-      danceAction = null;
-    }
-    
-    // Set default animation
+    // Start with idle animation
+    activeAction = idleAction;
     idleAction.play();
-    currentAnimationState = 'idle';
     
     // Load the orange model
     await loadOrangeModel();
     
-    console.log("All models loaded successfully");
-    return true;
+    console.log("Models loaded successfully");
   } catch (error) {
     console.error("Error loading models:", error);
-    if (isMobileDevice()) {
-      logToDebugPanel(`Error loading models: ${error.message}`, 'error');
-    }
+    if (isMobileDevice()) logToDebugPanel(`Error loading models: ${error.message}`, 'error');
     // Fallback to temporary capybara if loading fails
     createTemporaryCapybara();
-    return false;
   }
 }
 
 // Load orange model
 async function loadOrangeModel() {
   try {
-    console.log("Loading orange model using ModelCache");
-    
-    // Load the orange model using the cache system
-    const orangeGLTF = await ModelCache.getModel('./models/orange.glb');
-    
-    // Create 5 oranges at different positions
-    for (let i = 0; i < 5; i++) {
-      // Clone the model for each orange
-      const orangeModel = orangeGLTF.scene.clone();
-      orangeModel.scale.set(0.5, 0.5, 0.5);
-      orangeModel.castShadow = true;
+    // Create multiple oranges
+    for (let i = 0; i < orangeCount; i++) {
+      // Load the orange model
+      const orangeModel = await loader.loadAsync('./assets/orange.glb');
+      const orangeInstance = orangeModel.scene.clone();
       
-      // Random position within a certain range
-      const x = (Math.random() - 0.5) * 20;
-      const z = (Math.random() - 0.5) * 20;
-      const y = 1 + Math.random() * 2; // Height above ground
+      // Generate random position around the scene
+      const posX = Math.random() * 20 - 10; // Random position between -10 and 10
+      const posY = config.oranges.heightOffset + Math.random() * 2; // Use height offset from config
+      const posZ = Math.random() * 20 - 10; // Random position between -10 and 10
       
-      orangeModel.position.set(x, y, z);
-      scene.add(orangeModel);
+      // Position and scale the orange - use the config value for size
+      orangeInstance.scale.set(
+        config.oranges.size,
+        config.oranges.size,
+        config.oranges.size
+      );
+      orangeInstance.castShadow = true;
+      orangeInstance.position.set(posX, posY, posZ);
       
-      // Add to oranges array
-      oranges.push(orangeModel);
+      // Add the orange to the scene
+      scene.add(orangeInstance);
+      oranges.push(orangeInstance);
       
       // Create physics body for the orange
-      const orangeBodyDesc = rapier.RigidBodyDesc.dynamic()
-        .setTranslation(x, y, z);
-      const orangeBody = world.createRigidBody(orangeBodyDesc);
+      const orangeRigidBodyDesc = rapier.RigidBodyDesc.dynamic()
+        .setTranslation(posX, posY, posZ) // Same position as the visual model
+        .setLinearDamping(0.5) // Add some damping to make it feel more realistic
+        .setAngularDamping(0.5); // Add angular damping for rotation
       
-      // Create spherical collider
-      const orangeColliderDesc = rapier.ColliderDesc.ball(0.25) // Radius of 0.25
-        .setRestitution(0.7); // Bouncy
+      const orangeBody = world.createRigidBody(orangeRigidBodyDesc);
+      orangeBodies.push(orangeBody);
       
-      // Set collision group and filter
+      // Create a spherical collider for the orange
+      const orangeRadius = 0.3; // Adjust based on your orange model size
+      const orangeColliderDesc = rapier.ColliderDesc.ball(orangeRadius)
+        .setFriction(0.7) // Higher friction to roll naturally
+        .setRestitution(0.4) // Some bounciness
+        .setDensity(2.0); // Make it feel like an orange (slightly dense)
+      
       const orangeCollider = world.createCollider(orangeColliderDesc, orangeBody);
       
-      // Set id for collision detection
+      // Store orange collider ID for collision detection
       orangeColliderIds.push(orangeCollider.handle);
-      
-      // Add to orangeBodies array
-      orangeBodies.push(orangeBody);
     }
     
-    console.log(`Created ${oranges.length} oranges`);
-    return true;
+    console.log(`${orangeCount} orange models loaded successfully with physics`);
+    
   } catch (error) {
-    console.error("Error loading orange model:", error);
-    return false;
+    console.error("Error loading orange models:", error);
   }
 }
 
@@ -1326,8 +1330,7 @@ function fadeToAction(newAction, duration = 0.2) {
   const animationMap = {
     [idleAction]: 'Idle',
     [walkAction]: 'Walk',
-    [jumpAction]: 'Jump',
-    [danceAction]: 'Dance'
+    [jumpAction]: 'Jump'
   };
   
   const fromAnim = activeAction ? animationMap[activeAction] || 'Unknown' : 'None';
@@ -1868,14 +1871,19 @@ function updateOrangePosition() {
 // Initialize and start
 async function init() {
   try {
-    console.log("Initializing Capyverse...");
+    // Initialize mobile debugger for mobile devices
+    initMobileDebugger();
+    if (isMobileDevice()) logToDebugPanel('Starting initialization', 'info');
     
-    // Check if mobile device
-    if (isMobileDevice()) {
-      console.log("Mobile device detected");
-      initMobileDebugger();
-      logToDebugPanel('Initializing Capyverse on mobile device...', 'info');
-    }
+    // Set initial camera position high enough to see the ground
+    // This will be overridden by the third person camera
+    camera.position.set(0, 15, 20);
+    camera.lookAt(0, 0, 0);
+    
+    // Initialize RAPIER first
+    if (isMobileDevice()) logToDebugPanel('Initializing RAPIER physics', 'info');
+    await initRapier();
+    if (isMobileDevice()) logToDebugPanel('RAPIER initialized successfully', 'info');
     
     // Initialize physics
     if (isMobileDevice()) logToDebugPanel('Setting up physics world', 'info');
@@ -1886,17 +1894,6 @@ async function init() {
     if (isMobileDevice()) logToDebugPanel('Creating ground', 'info');
     createGround();
     if (isMobileDevice()) logToDebugPanel('Ground created', 'info');
-    
-    // Preload common models first for faster loading of remote players
-    if (isMobileDevice()) logToDebugPanel('Preloading common models', 'info');
-    try {
-      await ModelCache.preloadModels();
-      console.log("Models preloaded successfully");
-      if (isMobileDevice()) logToDebugPanel('Models preloaded successfully', 'success');
-    } catch (error) {
-      console.warn("Error preloading models:", error);
-      if (isMobileDevice()) logToDebugPanel('Error preloading models, will load on demand', 'warning');
-    }
     
     // Load models
     if (isMobileDevice()) logToDebugPanel('Loading 3D models', 'info');
