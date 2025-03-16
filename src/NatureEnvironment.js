@@ -33,7 +33,7 @@ export default class NatureEnvironment {
         minRadius: 2,       // Minimum pond radius
         maxRadius: 5,       // Maximum pond radius
         depth: 0.3,         // Depth of the pond
-        waterColor: 0x1E90FF // Base water color
+        waterColor: 0x3498DB // Brighter blue color for visibility
       },
       clouds: {
         count: 20,
@@ -324,14 +324,17 @@ export default class NatureEnvironment {
     const { count, minRadius, maxRadius, depth, waterColor } = this.config.ponds;
     const { width, height } = this.config.terrain;
     
-    const minDistanceToTree = 5; // Minimum distance to trees
-    const minDistanceToRock = 3; // Minimum distance to rocks
+    // Reduced minimum distances to allow more pond placement
+    const minDistanceToTree = 3; // Minimum distance to trees
+    const minDistanceToRock = 2; // Minimum distance to rocks
     
     // Try to place ponds with collision detection
     let attempts = 0;
     let placedCount = 0;
     
-    while (placedCount < count && attempts < count * 5) {
+    console.log("Attempting to place ponds...");
+    
+    while (placedCount < count && attempts < count * 10) {
       attempts++;
       
       // Random position for the pond center
@@ -376,7 +379,8 @@ export default class NatureEnvironment {
       
       // Create pond
       const pond = this.createPond(radius, depth, waterColor);
-      pond.position.set(centerX, y - depth/2, centerZ);
+      // Position at ground level for visibility
+      pond.position.set(centerX, 0.05, centerZ); // Slightly above ground
       
       // Store pond data for animation
       pond.userData.originalPosition = pond.position.clone();
@@ -388,6 +392,8 @@ export default class NatureEnvironment {
       placedCount++;
     }
     
+    console.log(`Successfully placed ${placedCount} ponds out of ${count} after ${attempts} attempts`);
+    
     return this.objects.ponds;
   }
   
@@ -396,48 +402,48 @@ export default class NatureEnvironment {
     const group = new THREE.Group();
     
     // Create pond base/bed with darker color
-    const bedGeometry = new THREE.CylinderGeometry(radius, radius * 0.9, depth * 0.2, 32);
+    const bedGeometry = new THREE.CylinderGeometry(radius, radius * 0.95, depth * 0.4, 32);
     const bedMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2F4F4F, // Dark slate gray for pond bed
+      color: 0x1E3B4D, // Darker blue for pond bed
       roughness: 0.9,
       metalness: 0.1,
     });
     const bed = new THREE.Mesh(bedGeometry, bedMaterial);
-    bed.position.y = -depth * 0.5 + depth * 0.1;
+    bed.position.y = -depth * 0.2; // Positioned slightly below ground
     bed.receiveShadow = true;
     group.add(bed);
     
     // Create water surface with stylized look
     const waterGeometry = new THREE.CircleGeometry(radius, 32);
     
-    // Add light blue tint to water color
+    // Add light blue tint to water color with more saturation
     const baseColor = new THREE.Color(waterColor);
     const waterMaterial = new THREE.MeshStandardMaterial({
       color: baseColor,
       transparent: true,
-      opacity: 0.75,
-      roughness: 0.2,
-      metalness: 0.3,
+      opacity: 0.85, // Increased opacity for visibility
+      roughness: 0.1, // More reflective
+      metalness: 0.5, // More metallic for water shine
     });
     
     const water = new THREE.Mesh(waterGeometry, waterMaterial);
     water.rotation.x = -Math.PI / 2; // Make horizontal
-    water.position.y = 0.01; // Slightly above ground
+    water.position.y = 0.1; // Slightly above ground for visibility
     water.receiveShadow = true;
     group.add(water);
     
     // Add simple ripple pattern on the water
     const rippleGeometry = new THREE.CircleGeometry(radius * 0.7, 32);
     const rippleMaterial = new THREE.MeshStandardMaterial({
-      color: 0xFFFFFF,
+      color: 0xCCE6FF, // Light blue for ripples
       transparent: true,
-      opacity: 0.2,
+      opacity: 0.4, // Increased opacity for visibility
       roughness: 0.1,
-      metalness: 0.1,
+      metalness: 0.3,
     });
     const ripple = new THREE.Mesh(rippleGeometry, rippleMaterial);
     ripple.rotation.x = -Math.PI / 2; // Make horizontal
-    ripple.position.y = 0.02; // Slightly above water
+    ripple.position.y = 0.11; // Slightly above water
     group.add(ripple);
     
     // Store ripple reference for animation
