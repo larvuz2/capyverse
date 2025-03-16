@@ -29,6 +29,9 @@ class ThirdPersonCamera {
     this.currentLookAt = new THREE.Vector3();    // Current smoothed look-at point
     this.desiredPosition = new THREE.Vector3();  // Target position before smoothing
     
+    // Initialize rotation quaternion
+    this.rotationQuaternion = new THREE.Quaternion();
+    
     // Initialize camera position
     this.updatePosition(0);
     
@@ -183,13 +186,12 @@ class ThirdPersonCamera {
     
     // Update vertical angle (rotation around X axis)
     this.verticalAngle = Math.max(
-      this.minVerticalAngle,
-      Math.min(this.maxVerticalAngle, this.verticalAngle + movement.y)
+      this._minVerticalAngle,
+      Math.min(this._maxVerticalAngle, this.verticalAngle + movement.y)
     );
     
-    // Create quaternion from euler angles
-    const euler = new THREE.Euler(this.verticalAngle, this.horizontalAngle, 0, 'YXZ');
-    this.rotationQuaternion.setFromEuler(euler);
+    // No need to set quaternion directly, we'll use these angles in updatePosition
+    // The issue was using this.rotationQuaternion without properly integrating it
   }
   
   /**
@@ -201,9 +203,9 @@ class ThirdPersonCamera {
       return;
     }
     
-    // Apply mouse movement to rotation if provided
+    // Apply mouse movement to angles if provided
     if (mouseDelta) {
-      this.updateRotation(mouseDelta);
+      this.updateAngles(mouseDelta);
     }
     
     // Update camera position with current rotation
