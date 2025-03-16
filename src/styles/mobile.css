@@ -1,0 +1,290 @@
+/**
+ * Mobile-specific styles for the game
+ * Contains responsive design adjustments and joystick styling
+ */
+
+/* Performance optimizations for mobile */
+.mobile-device {
+  /* Apply hardware acceleration at body level */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  
+  /* Optimize for mobile rendering */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  
+  /* Prevent grey flash when tapping elements */
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+}
+
+/* Base mobile adjustments */
+@media (max-width: 1024px) {
+  /* Prevent pinch zooming on mobile which can interfere with touch controls */
+  html, body {
+    touch-action: manipulation;
+    -webkit-overflow-scrolling: auto;
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+  }
+  
+  /* Optimizations for mobile rendering */
+  canvas {
+    image-rendering: optimizeSpeed;
+    will-change: transform; /* Hint for browser optimization */
+  }
+  
+  /* Hide mouse-specific UI elements on mobile */
+  .desktop-only {
+    display: none !important;
+  }
+  
+  /* Make touch targets larger on mobile */
+  button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 12px;
+  }
+  
+  /* Game UI optimizations for mobile */
+  .game-ui {
+    /* Use hardware acceleration for UI elements */
+    transform: translateZ(0);
+    will-change: opacity, transform;
+  }
+}
+
+/* Portrait mode specific adjustments */
+@media (max-width: 1024px) and (orientation: portrait) {
+  /* Adjustments specific to portrait orientation */
+  .mobile-controls {
+    bottom: 80px;
+  }
+  
+  /* Move UI elements for better accessibility in portrait mode */
+  .game-ui-top {
+    top: 40px; /* More space from the top */
+  }
+}
+
+/* Landscape mode specific adjustments */
+@media (max-width: 1024px) and (orientation: landscape) {
+  /* Adjustments specific to landscape orientation */
+  .mobile-controls {
+    bottom: 30px;
+  }
+  
+  /* Landscape UI adjustments */
+  .game-ui-side {
+    width: 15%; /* Narrower in landscape */
+  }
+}
+
+/* Mobile control elements styling */
+.mobile-controls {
+  display: none; /* Hidden by default, shown via JS when on mobile */
+  position: absolute;
+  z-index: 1000;
+  transition: opacity 0.5s ease-in-out;
+  pointer-events: none; /* Only capture events on children */
+  will-change: opacity; /* Hardware acceleration hint */
+}
+
+/* Fade-out animation for auto-hide */
+.mobile-controls.fade-out {
+  opacity: 0.3;
+  transition: opacity 1s ease-in-out;
+}
+
+/* Base for joystick (outer circle) */
+.joystick-base {
+  position: absolute;
+  bottom: 80px;
+  left: 80px;
+  width: 140px;
+  height: 140px;
+  background-color: rgba(255, 255, 255, 0.5); /* 50% opacity */
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  z-index: 1000;
+  touch-action: none;
+  transition: 
+    background-color 0.2s ease,
+    box-shadow 0.3s ease,
+    transform 0.2s ease;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto; /* Capture events */
+  will-change: transform, background-color, box-shadow; /* Hardware acceleration hint */
+}
+
+/* Joystick knob (inner circle) */
+.joystick-knob {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  left: 35px; /* Centered within base: (140 - 70) / 2 */
+  top: 35px;
+  background-color: rgba(255, 255, 255, 0.5); /* 50% opacity */
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  z-index: 1001;
+  touch-action: none;
+  transition: 
+    background-color 0.2s ease, 
+    transform 0.1s ease,
+    box-shadow 0.3s ease;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  will-change: transform; /* Hardware acceleration hint */
+}
+
+/* Direction indicator for visual feedback */
+.joystick-direction {
+  position: absolute;
+  width: 3px;
+  height: 50px;
+  background: linear-gradient(to top, rgba(255,255,255,0.8), transparent);
+  top: 20px;
+  left: 68.5px; /* Centered: (140 - 3) / 2 */
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+  pointer-events: none;
+  transform-origin: bottom center;
+  will-change: transform, opacity; /* Hardware acceleration hint */
+}
+
+/* Camera control visual indicator */
+#camera-control-area {
+  will-change: opacity, background; /* Hardware acceleration hint */
+  transition: opacity 0.3s ease;
+}
+
+/* Active states - keeping same 50% opacity */
+.joystick-base.active {
+  background-color: rgba(255, 255, 255, 0.5); /* 50% opacity when active */
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+}
+
+.joystick-knob.active {
+  background-color: rgba(255, 255, 255, 0.5); /* 50% opacity when active */
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* Pulse animation for feedback */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+.joystick-base.pulse {
+  animation: pulse 0.5s ease-in-out;
+}
+
+/* High-DPI screen adaptations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .joystick-base {
+    border-width: 0.5px;
+  }
+  
+  .joystick-knob {
+    border-width: 0.5px;
+  }
+}
+
+/* Dark mode adaptation for better contrast in dark games */
+@media (prefers-color-scheme: dark) {
+  .joystick-base {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+  
+  .joystick-knob {
+    background-color: rgba(255, 255, 255, 0.5);
+    border-color: rgba(255, 255, 255, 0.7);
+  }
+  
+  .joystick-base.active {
+    background-color: rgba(255, 255, 255, 0.5);
+  }
+  
+  .joystick-knob.active {
+    background-color: rgba(255, 255, 255, 0.5);
+  }
+}
+
+/* Battery-saving mode for OLED screens */
+.battery-saving .joystick-base {
+  background-color: rgba(100, 100, 100, 0.5);
+  border-color: rgba(150, 150, 150, 0.5);
+  box-shadow: none; /* Remove box shadow for performance */
+}
+
+.battery-saving .joystick-knob {
+  box-shadow: none; /* Remove box shadow for performance */
+  background-color: rgba(120, 120, 120, 0.5);
+  border-color: rgba(150, 150, 150, 0.6);
+}
+
+.battery-saving .joystick-direction {
+  display: none; /* Hide direction indicator to save performance */
+}
+
+.battery-saving #camera-control-area {
+  background: none !important; /* Disable visual feedback for camera control */
+}
+
+/* Simplified animations for battery saving mode */
+.battery-saving .joystick-base,
+.battery-saving .joystick-knob {
+  transition: background-color 0.3s ease; /* Keep only essential transitions */
+}
+
+/* Simpler pulse animation for battery saving mode */
+@keyframes simple-pulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.4; }
+  100% { opacity: 0.3; }
+}
+
+.battery-saving .joystick-base.pulse {
+  animation: simple-pulse 0.6s ease-in-out;
+  transform: none; /* Don't use transform for animation in battery mode */
+}
+
+/* Device-specific optimizations */
+
+/* iOS optimizations */
+@supports (-webkit-touch-callout: none) {
+  /* iOS-specific adjustments */
+  .mobile-controls {
+    /* Fix for iOS issues with absolute positioning and safe areas */
+    bottom: calc(env(safe-area-inset-bottom) + 60px);
+    left: calc(env(safe-area-inset-left) + 60px);
+  }
+
+  /* Ensure iOS notch doesn't hide UI */
+  .game-ui-top {
+    top: max(40px, env(safe-area-inset-top));
+  }
+  
+  /* Fix for iOS 100vh issue */
+  html, body {
+    height: -webkit-fill-available;
+  }
+}
+
+/* Samsung Galaxy specific optimizations (known for OLED screens) */
+@supports (-webkit-hyphens: none) and (not (-ms-ime-align: auto)) and (not (-moz-appearance: none)) {
+  /* Adjust colors to prevent OLED burn-in */
+  .battery-saving .joystick-base,
+  .battery-saving .joystick-knob {
+    /* Use dark grays instead of whites for OLED */
+    background-color: rgba(60, 60, 60, 0.4);
+    border-color: rgba(100, 100, 100, 0.5);
+  }
+}

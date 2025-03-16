@@ -1040,4 +1040,4 @@ class MobileJoystick {
   }
 }
 
-export default MobileJoystick; 
+export default MobileJoystick;

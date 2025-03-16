@@ -1,417 +1,513 @@
 /**
  * DeviceDetector.js
- * Utility for detecting device types and handling responsive design adaptations
+ * Utility functions for detecting mobile devices and their capabilities
  */
 
 /**
- * Detects if the current device is a mobile device
- * Uses multiple detection methods for reliability
- * @returns {boolean} True if the device is mobile, false otherwise
+ * Check if the current device is a mobile device
+ * This uses multiple detection methods for higher accuracy
+ * 
+ * @returns {boolean} True if the current device is mobile
  */
-function isMobileDevice() {
-  // Method 1: Check for touch capability
+export function isMobileDevice() {
+  // Check if device has touch capability
   const hasTouchCapability = 'ontouchstart' in window || 
-                           navigator.maxTouchPoints > 0 || 
-                           navigator.msMaxTouchPoints > 0;
+    navigator.maxTouchPoints > 0 || 
+    navigator.msMaxTouchPoints > 0;
   
-  // Method 2: Check user agent for mobile patterns
-  const userAgentMatch = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // Check for mobile user agent patterns
+  const userAgent = navigator.userAgent.toLowerCase();
+  const isMobileUserAgent = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent);
   
-  // Method 3: Check screen size (generally mobile devices are smaller)
-  // This is a simple heuristic and might need adjustment
+  // Check screen dimensions
   const hasSmallScreen = window.innerWidth <= 1024;
   
-  // Consider a device mobile if it has touch capabilities AND either matches mobile user agent OR has small screen
-  return hasTouchCapability && (userAgentMatch || hasSmallScreen);
+  // Use combination for more reliable detection
+  return (hasTouchCapability && (isMobileUserAgent || hasSmallScreen));
 }
 
 /**
  * Get the current device orientation
+ * 
  * @returns {string} 'portrait' or 'landscape'
  */
-function getDeviceOrientation() {
+export function getDeviceOrientation() {
   return window.innerHeight > window.innerWidth ? 'portrait' : 'landscape';
 }
 
 /**
  * Add an event listener for orientation changes
- * @param {Function} callback Function to call when orientation changes
- * @returns {Function} Function to remove the listener
+ * 
+ * @param {Function} callback - Function to call when orientation changes
+ * @returns {Function} Function to remove the event listener
  */
-function addOrientationChangeListener(callback) {
-  const handler = () => {
-    const orientation = getDeviceOrientation();
-    callback(orientation);
+export function addOrientationChangeListener(callback) {
+  // The event we listen for depends on the browser
+  const orientationEvent = 'onorientationchange' in window ? 'orientationchange' : 'resize';
+  
+  // Function to handle orientation change
+  const handleOrientationChange = () => {
+    callback(getDeviceOrientation());
   };
   
-  // Listen for both resize and orientationchange events for better coverage
-  window.addEventListener('resize', handler);
-  window.addEventListener('orientationchange', handler);
+  // Add the event listener
+  window.addEventListener(orientationEvent, handleOrientationChange, false);
   
-  // Return a function to remove the listeners
+  // Return a function to remove the listener
   return () => {
-    window.removeEventListener('resize', handler);
-    window.removeEventListener('orientationchange', handler);
+    window.removeEventListener(orientationEvent, handleOrientationChange, false);
   };
 }
 
 /**
- * Get mobile-specific device information with enhanced details
- * Useful for detailed analytics or device-specific adjustments
- * @returns {Object} Device information
+ * Get detailed information about the mobile device
+ * 
+ * @returns {Object} Object with device information
  */
-function getMobileDeviceInfo() {
+export function getMobileDeviceInfo() {
   const ua = navigator.userAgent;
-  const platformInfo = navigator.platform || '';
+  const platform = navigator.platform;
+  const vendor = navigator.vendor || '';
   
-  // Base device info
-  const deviceInfo = {
+  // Get battery status if available
+  let batteryPromise = null;
+  if (navigator.getBattery) {
+    batteryPromise = navigator.getBattery();
+  }
+  
+  // Basic device info
+  const info = {
+    userAgent: ua,
+    platform: platform,
+    vendor: vendor,
     isMobile: isMobileDevice(),
     orientation: getDeviceOrientation(),
-    hasTouch: 'ontouchstart' in window,
-    screenWidth: window.innerWidth,
-    screenHeight: window.innerHeight,
-    screenAspectRatio: window.innerWidth / window.innerHeight,
-    pixelRatio: window.devicePixelRatio || 1,
-    isIOS: /iPad|iPhone|iPod/.test(ua) && !window.MSStream,
-    isAndroid: /Android/.test(ua),
-    isWindowsPhone: /Windows Phone/.test(ua),
-    isSamsung: /SM-|SAMSUNG/.test(ua),
-    os: 'Unknown',
-    version: 'Unknown',
-    browser: 'Unknown',
-    browserVersion: 'Unknown',
+    screenWidth: window.screen.width,
+    screenHeight: window.screen.height,
+    devicePixelRatio: window.devicePixelRatio || 1,
     isLowEndDevice: false,
-    batteryLevel: null,
-    isLowPowerMode: false,
-    hasGyroscope: false,
-    hasPressureSensor: false,
-    hasProximitySensor: false,
-    cpu: {
-      cores: navigator.hardwareConcurrency || 1,
-      architecture: /arm|aarch64|iPad|iPhone|iPod/.test(ua) ? 'ARM' : 'x86'
-    },
-    memory: navigator.deviceMemory || 4, // Default to 4GB if not available
-    connection: navigator.connection ? {
-      type: navigator.connection.effectiveType || 'unknown',
-      downlink: navigator.connection.downlink || 0,
-      rtt: navigator.connection.rtt || 0,
-      saveData: navigator.connection.saveData || false
-    } : null
+    isHighEndDevice: false,
+    memoryInfo: navigator.deviceMemory || 'unknown',
+    connectionType: 'unknown',
+    batteryInfo: null,
+    supportsTouchEvents: 'ontouchstart' in window,
+    supportsOrientationEvents: 'onorientationchange' in window,
+    osInfo: getOSInfo(ua),
+    browserInfo: getBrowserInfo(ua, vendor),
+    hardwareInfo: getHardwareInfo(ua),
+    gpuInfo: getGPUInfo(),
+    capabilities: getDeviceCapabilities()
   };
   
-  // Detailed OS version detection
-  if (deviceInfo.isIOS) {
-    deviceInfo.os = 'iOS';
-    // Extract iOS version
-    const match = ua.match(/OS (\d+)_(\d+)_?(\d+)?/);
-    if (match) {
-      deviceInfo.version = `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
-    }
-    
-    // Identify specific device models
-    if (/iPhone/.test(ua)) {
-      deviceInfo.model = 'iPhone';
-      // Try to identify iPhone model based on screen size and device pixel ratio
-      if (window.screen) {
-        const { width, height } = window.screen;
-        const maxDim = Math.max(width, height);
-        const minDim = Math.min(width, height);
-        const dpr = window.devicePixelRatio || 1;
-        
-        if (maxDim === 896 && minDim === 414) {
-          deviceInfo.model = dpr === 3 ? 'iPhone 11' : 'iPhone XR';
-        } else if (maxDim === 812 && minDim === 375) {
-          deviceInfo.model = 'iPhone X/XS/11 Pro';
-        } else if (maxDim === 926 && minDim === 428) {
-          deviceInfo.model = 'iPhone 12/13 Pro Max';
-        }
-      }
-    } else if (/iPad/.test(ua)) {
-      deviceInfo.model = 'iPad';
-    } else if (/iPod/.test(ua)) {
-      deviceInfo.model = 'iPod';
-    }
-  } else if (deviceInfo.isAndroid) {
-    deviceInfo.os = 'Android';
-    // Extract Android version
-    const match = ua.match(/Android (\d+)\.(\d+)(\.(\d+))?/);
-    if (match) {
-      deviceInfo.version = `${match[1]}.${match[2]}${match[4] ? `.${match[4]}` : ''}`;
-    }
-    
-    // Try to identify Android device model
-    const modelMatch = ua.match(/;\s([^;]+)\sBuild\//) || ua.match(/;\s([^;]+);\s[a-zA-Z0-9]+\)/) || ua.match(/\(([^;]+);\s[a-zA-Z0-9]+\)/);
-    if (modelMatch && modelMatch[1]) {
-      deviceInfo.model = modelMatch[1].trim();
-    }
-  } else if (deviceInfo.isWindowsPhone) {
-    deviceInfo.os = 'Windows Phone';
-    const match = ua.match(/Windows Phone (\d+)\.(\d+)/);
-    if (match) {
-      deviceInfo.version = `${match[1]}.${match[2]}`;
-    }
-  } else if (/Windows/.test(ua)) {
-    deviceInfo.os = 'Windows';
-    if (/Windows NT 10\.0/.test(ua)) {
-      deviceInfo.version = '10';
-    } else if (/Windows NT 6\.3/.test(ua)) {
-      deviceInfo.version = '8.1';
-    } else if (/Windows NT 6\.2/.test(ua)) {
-      deviceInfo.version = '8';
-    } else if (/Windows NT 6\.1/.test(ua)) {
-      deviceInfo.version = '7';
-    }
-  } else if (/Macintosh/.test(ua)) {
-    deviceInfo.os = 'macOS';
-    const match = ua.match(/Mac OS X (\d+)[_.](\d+)[_.]?(\d+)?/);
-    if (match) {
-      deviceInfo.version = `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
-    }
-  } else if (/Linux/.test(ua) || /X11/.test(ua)) {
-    deviceInfo.os = 'Linux';
+  // Get network information if available
+  if (navigator.connection) {
+    info.connectionType = navigator.connection.effectiveType || navigator.connection.type || 'unknown';
+    info.downlink = navigator.connection.downlink;
+    info.saveData = navigator.connection.saveData;
   }
   
-  // Browser detection
-  if (/Chrome/.test(ua) && !/Chromium|Edge|Edg|OPR|CriOS/.test(ua)) {
-    deviceInfo.browser = 'Chrome';
-    const match = ua.match(/Chrome\/(\d+)\.(\d+)\.(\d+)\.(\d+)/);
-    if (match) {
-      deviceInfo.browserVersion = `${match[1]}.${match[2]}.${match[3]}`;
-    }
-  } else if (/Firefox|FxiOS/.test(ua)) {
-    deviceInfo.browser = 'Firefox';
-    const match = ua.match(/Firefox\/(\d+)\.(\d+)/);
-    if (match) {
-      deviceInfo.browserVersion = `${match[1]}.${match[2]}`;
-    }
-  } else if (/Safari/.test(ua) && !/Chrome|Chromium|Edge|Edg|OPR|CriOS/.test(ua)) {
-    deviceInfo.browser = 'Safari';
-    const match = ua.match(/Version\/(\d+)\.(\d+)\.?(\d+)?/);
-    if (match) {
-      deviceInfo.browserVersion = `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
-    }
-  } else if (/MSIE|Trident|IEMobile/.test(ua)) {
-    deviceInfo.browser = 'Internet Explorer';
-    const match = ua.match(/MSIE (\d+)\.(\d+)/);
-    if (match) {
-      deviceInfo.browserVersion = `${match[1]}.${match[2]}`;
-    } else {
-      // For IE 11, which doesn't use MSIE token
-      const tridentMatch = ua.match(/Trident\/(\d+)\.(\d+)/);
-      if (tridentMatch) {
-        deviceInfo.browserVersion = '11.0'; // IE 11
-      }
-    }
-  } else if (/Edge|Edg/.test(ua)) {
-    deviceInfo.browser = 'Edge';
-    const match = ua.match(/Edge\/(\d+)\.(\d+)/) || ua.match(/Edg\/(\d+)\.(\d+)\.(\d+)/);
-    if (match) {
-      deviceInfo.browserVersion = match[1] ? `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}` : '';
-    }
-  } else if (/OPR|Opera/.test(ua)) {
-    deviceInfo.browser = 'Opera';
-    const match = ua.match(/OPR\/(\d+)\.(\d+)\.(\d+)/) || ua.match(/Opera\/(\d+)\.(\d+)/);
-    if (match) {
-      deviceInfo.browserVersion = `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
-    }
+  // Check for low-end or high-end device
+  if (info.devicePixelRatio <= 1 || (info.memoryInfo !== 'unknown' && info.memoryInfo <= 2)) {
+    info.isLowEndDevice = true;
+  } else if (info.devicePixelRatio >= 2.5 || (info.memoryInfo !== 'unknown' && info.memoryInfo >= 6)) {
+    info.isHighEndDevice = true;
   }
   
-  // Detect low-end device based on available metrics
-  deviceInfo.isLowEndDevice = 
-    (deviceInfo.memory && deviceInfo.memory < 2) || // Less than 2GB RAM
-    (deviceInfo.cpu.cores && deviceInfo.cpu.cores <= 2) || // 2 cores or less
-    (deviceInfo.connection && 
-     (deviceInfo.connection.effectiveType === 'slow-2g' || 
-      deviceInfo.connection.effectiveType === '2g'));
-  
-  // Try to access battery information if available
-  if (navigator.getBattery) {
-    navigator.getBattery().then(battery => {
-      deviceInfo.batteryLevel = battery.level;
-      deviceInfo.isCharging = battery.charging;
-      
-      // Consider low power mode if battery is below 20% and not charging
-      deviceInfo.isLowPowerMode = (battery.level < 0.2 && !battery.charging);
-    }).catch(() => {
-      // Battery API access failed
-    });
-  }
-  
-  // Check for sensor availability
-  deviceInfo.hasGyroscope = window.DeviceOrientationEvent !== undefined;
-  
-  // Detect WebGL capabilities for performance assessment
-  try {
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    if (gl) {
-      deviceInfo.gpuInfo = {
-        vendor: gl.getParameter(gl.VENDOR),
-        renderer: gl.getParameter(gl.RENDERER),
-        webglVersion: gl.getParameter(gl.VERSION),
-        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
-        extensions: gl.getSupportedExtensions().length
+  // Return the promise that will resolve with the full device info
+  return batteryPromise ? 
+    batteryPromise.then(battery => {
+      info.batteryInfo = {
+        level: battery.level,
+        charging: battery.charging,
+        chargingTime: battery.chargingTime,
+        dischargingTime: battery.dischargingTime
       };
-    }
-  } catch (e) {
-    // WebGL detection failed
-  }
-  
-  return deviceInfo;
+      return info;
+    }).catch(() => info) : 
+    Promise.resolve(info);
 }
 
 /**
- * Test device performance with a lightweight benchmark
+ * Get information about the operating system
+ * 
+ * @param {string} ua - User agent string
+ * @returns {Object} OS information
+ */
+function getOSInfo(ua) {
+  const lowercaseUA = ua.toLowerCase();
+  let os = 'unknown';
+  let version = 'unknown';
+  
+  // Detect OS type
+  if (lowercaseUA.indexOf('win') >= 0) {
+    os = 'Windows';
+    if (lowercaseUA.indexOf('windows nt 10.0') >= 0) version = '10';
+    else if (lowercaseUA.indexOf('windows nt 6.3') >= 0) version = '8.1';
+    else if (lowercaseUA.indexOf('windows nt 6.2') >= 0) version = '8';
+    else if (lowercaseUA.indexOf('windows nt 6.1') >= 0) version = '7';
+  } else if (lowercaseUA.indexOf('iphone') >= 0 || lowercaseUA.indexOf('ipad') >= 0 || lowercaseUA.indexOf('ipod') >= 0) {
+    os = 'iOS';
+    const match = lowercaseUA.match(/os (\d+)_(\d+)_?(\d+)?/);
+    if (match) version = `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
+  } else if (lowercaseUA.indexOf('android') >= 0) {
+    os = 'Android';
+    const match = lowercaseUA.match(/android (\d+(?:\.\d+)*)/);
+    if (match) version = match[1];
+  } else if (lowercaseUA.indexOf('mac') >= 0) {
+    os = 'macOS';
+    const match = lowercaseUA.match(/mac os x (\d+)_(\d+)_?(\d+)?/);
+    if (match) version = `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
+  } else if (lowercaseUA.indexOf('linux') >= 0) {
+    os = 'Linux';
+  }
+  
+  return { name: os, version: version };
+}
+
+/**
+ * Get information about the browser
+ * 
+ * @param {string} ua - User agent string
+ * @param {string} vendor - Browser vendor string
+ * @returns {Object} Browser information
+ */
+function getBrowserInfo(ua, vendor) {
+  const lowercaseUA = ua.toLowerCase();
+  const lowercaseVendor = vendor.toLowerCase();
+  let browser = 'unknown';
+  let version = 'unknown';
+  
+  // Chrome detection
+  if (lowercaseUA.indexOf('chrome') > -1 && lowercaseVendor.indexOf('google') > -1) {
+    browser = 'Chrome';
+    const match = lowercaseUA.match(/chrome\/(\d+\.\d+)/);
+    if (match) version = match[1];
+  } 
+  // Firefox detection
+  else if (lowercaseUA.indexOf('firefox') > -1) {
+    browser = 'Firefox';
+    const match = lowercaseUA.match(/firefox\/(\d+\.\d+)/);
+    if (match) version = match[1];
+  } 
+  // Safari detection
+  else if (lowercaseUA.indexOf('safari') > -1 && lowercaseUA.indexOf('chrome') === -1) {
+    browser = 'Safari';
+    const match = lowercaseUA.match(/version\/(\d+\.\d+)/);
+    if (match) version = match[1];
+  } 
+  // Edge detection
+  else if (lowercaseUA.indexOf('edge') > -1 || lowercaseUA.indexOf('edg/') > -1) {
+    browser = 'Edge';
+    const match = lowercaseUA.match(/edge\/(\d+\.\d+)/) || lowercaseUA.match(/edg\/(\d+\.\d+)/);
+    if (match) version = match[1];
+  } 
+  // IE detection
+  else if (lowercaseUA.indexOf('trident') > -1) {
+    browser = 'Internet Explorer';
+    const match = lowercaseUA.match(/rv:(\d+\.\d+)/);
+    if (match) version = match[1];
+  }
+  
+  return { name: browser, version: version };
+}
+
+/**
+ * Get information about the device hardware
+ * 
+ * @param {string} ua - User agent string
+ * @returns {Object} Hardware information
+ */
+function getHardwareInfo(ua) {
+  const lowercaseUA = ua.toLowerCase();
+  const info = {
+    model: 'unknown',
+    manufacturer: 'unknown',
+    cores: navigator.hardwareConcurrency || 'unknown'
+  };
+  
+  // Try to detect iPhone/iPad models
+  if (lowercaseUA.indexOf('iphone') >= 0) {
+    info.manufacturer = 'Apple';
+    info.model = 'iPhone';
+  } else if (lowercaseUA.indexOf('ipad') >= 0) {
+    info.manufacturer = 'Apple';
+    info.model = 'iPad';
+  }
+  // Try to detect Samsung models
+  else if (lowercaseUA.indexOf('samsung') >= 0) {
+    info.manufacturer = 'Samsung';
+    const match = lowercaseUA.match(/sm-[a-z0-9]+/i);
+    if (match) info.model = match[0].toUpperCase();
+  }
+  // Try to detect Google Pixel
+  else if (lowercaseUA.indexOf('pixel') >= 0) {
+    info.manufacturer = 'Google';
+    const match = lowercaseUA.match(/pixel \d+/i);
+    if (match) info.model = match[0];
+  }
+  
+  return info;
+}
+
+/**
+ * Get information about the GPU
+ * 
+ * @returns {Object} GPU information
+ */
+function getGPUInfo() {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  
+  if (!gl) {
+    return { renderer: 'unknown', vendor: 'unknown' };
+  }
+  
+  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+  
+  if (!debugInfo) {
+    return { renderer: 'unknown', vendor: 'unknown' };
+  }
+  
+  const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+  const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+  
+  return { renderer, vendor };
+}
+
+/**
+ * Test the device performance
+ * 
  * @returns {Promise<Object>} Performance metrics
  */
-function testDevicePerformance() {
+export function testDevicePerformance() {
   return new Promise(resolve => {
     const metrics = {
-      computeScore: 0,
-      renderingScore: 0,
-      memoryScore: 0,
-      storageScore: 0,
-      overall: 0,
-      category: 'unknown'
+      fpsEstimate: 0,
+      processingPower: 0,
+      renderingCapability: 0,
+      memoryLimits: 0,
+      overall: 0
     };
     
-    // Start compute test
+    // Start time for FPS estimation
     const startTime = performance.now();
+    let frames = 0;
+    let testDuration = 1000; // 1 second test
     
-    // Simple compute test - non-blocking
-    setTimeout(() => {
-      // Compute benchmarking - simple calculations
-      try {
-        let result = 0;
-        const iterations = 10000;
-        
-        for (let i = 0; i < iterations; i++) {
-          result += Math.sqrt(i) * Math.sin(i) / Math.cos(i);
-        }
-        
-        const computeTime = performance.now() - startTime;
-        metrics.computeScore = Math.min(100, Math.max(0, 100 - (computeTime / 50)));
-        
-        // Simple rendering test
-        const canvas = document.createElement('canvas');
-        canvas.width = 300;
-        canvas.height = 300;
-        const ctx = canvas.getContext('2d');
-        
-        const renderStart = performance.now();
-        
-        // Draw 500 random shapes
-        for (let i = 0; i < 500; i++) {
-          ctx.fillStyle = `rgba(${Math.random()*255},${Math.random()*255},${Math.random()*255},0.5)`;
-          ctx.beginPath();
-          ctx.arc(Math.random() * 300, Math.random() * 300, Math.random() * 20, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        
-        const renderTime = performance.now() - renderStart;
-        metrics.renderingScore = Math.min(100, Math.max(0, 100 - (renderTime / 20)));
-        
-        // Memory benchmark - estimate available memory
-        metrics.memoryScore = navigator.deviceMemory 
-          ? Math.min(100, navigator.deviceMemory * 12.5) // 8GB+ = 100 score
-          : 50; // Default if not available
-        
-        // Storage benchmark - test localStorage performance
-        const storageStart = performance.now();
-        const testSize = 100;
-        const storageTestKey = '_device_detector_test';
-        
-        try {
-          const dataToStore = new Array(testSize).fill('X').join('');
-          localStorage.setItem(storageTestKey, dataToStore);
-          const readValue = localStorage.getItem(storageTestKey);
-          localStorage.removeItem(storageTestKey);
-          
-          const storageTime = performance.now() - storageStart;
-          metrics.storageScore = Math.min(100, Math.max(0, 100 - (storageTime / 5)));
-        } catch (e) {
-          metrics.storageScore = 30; // Low score if storage access fails
-        }
-        
-        // Calculate overall score
-        metrics.overall = (metrics.computeScore + metrics.renderingScore + metrics.memoryScore + metrics.storageScore) / 4;
-        
-        // Categorize performance
-        if (metrics.overall >= 70) {
-          metrics.category = 'high';
-        } else if (metrics.overall >= 40) {
-          metrics.category = 'medium';
-        } else {
-          metrics.category = 'low';
-        }
-        
-        // Return the metrics
-        resolve(metrics);
-      } catch (e) {
-        // If benchmark fails, return default medium values
-        resolve({
-          computeScore: 50,
-          renderingScore: 50,
-          memoryScore: 50,
-          storageScore: 50,
-          overall: 50,
-          category: 'medium',
-          error: e.message
-        });
+    // Create a simple rendering test
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Test processing power (math operations)
+    let processingStart = performance.now();
+    let operationsCount = 0;
+    const targetOperations = 1000000;
+    
+    while (operationsCount < targetOperations && performance.now() - processingStart < 200) {
+      Math.sin(operationsCount) * Math.cos(operationsCount);
+      Math.sqrt(operationsCount);
+      operationsCount++;
+    }
+    
+    const processingTime = performance.now() - processingStart;
+    metrics.processingPower = Math.min(100, Math.floor((operationsCount / targetOperations) * 100));
+    
+    // Test memory allocation
+    try {
+      let memory = [];
+      let allocated = 0;
+      const chunkSize = 1000000; // 1MB chunks
+      const memoryStart = performance.now();
+      
+      // Try to allocate up to 200MB or 500ms
+      while (allocated < 200 && performance.now() - memoryStart < 500) {
+        memory.push(new Array(chunkSize).fill(0));
+        allocated++;
       }
-    }, 0); // Use setTimeout to avoid blocking the UI
+      
+      metrics.memoryLimits = Math.min(100, allocated / 2);
+      memory = null; // Free memory
+    } catch (e) {
+      metrics.memoryLimits = 10; // Very limited memory
+    }
+    
+    // Animation frame function for FPS testing
+    function testFrame() {
+      frames++;
+      
+      // Simple rendering test
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw 100 random shapes
+      for (let i = 0; i < 100; i++) {
+        ctx.fillStyle = `rgba(${Math.random() * 255},${Math.random() * 255},${Math.random() * 255},0.5)`;
+        ctx.beginPath();
+        ctx.arc(
+          Math.random() * canvas.width, 
+          Math.random() * canvas.height, 
+          Math.random() * 50, 
+          0, 
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+      
+      const elapsed = performance.now() - startTime;
+      
+      if (elapsed < testDuration) {
+        requestAnimationFrame(testFrame);
+      } else {
+        // Calculate FPS and other metrics
+        metrics.fpsEstimate = Math.floor(frames / (elapsed / 1000));
+        metrics.renderingCapability = Math.min(100, Math.floor((metrics.fpsEstimate / 60) * 100));
+        
+        // Calculate overall performance score (weighted average)
+        metrics.overall = Math.floor(
+          (metrics.processingPower * 0.3) + 
+          (metrics.renderingCapability * 0.4) + 
+          (metrics.memoryLimits * 0.3)
+        );
+        
+        resolve(metrics);
+      }
+    }
+    
+    // Start the test
+    requestAnimationFrame(testFrame);
   });
 }
 
 /**
- * Get device features and capabilities
+ * Get device capabilities
+ * 
  * @returns {Object} Device capabilities
  */
-function getDeviceCapabilities() {
+export function getDeviceCapabilities() {
   return {
+    // WebGL support
     webgl: !!window.WebGLRenderingContext,
     webgl2: !!window.WebGL2RenderingContext,
-    canvas: !!window.CanvasRenderingContext2D,
+    
+    // Audio/Video capabilities
+    audioContext: !!window.AudioContext || !!window.webkitAudioContext,
     webAudio: !!window.AudioContext || !!window.webkitAudioContext,
-    geolocation: !!navigator.geolocation,
-    touchscreen: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+    
+    // Input capabilities
+    touch: 'ontouchstart' in window,
+    multitouch: navigator.maxTouchPoints > 1,
+    gamepad: !!navigator.getGamepads,
+    
+    // Sensors
     deviceMotion: !!window.DeviceMotionEvent,
     deviceOrientation: !!window.DeviceOrientationEvent,
-    vibration: !!navigator.vibrate,
-    ambientLight: !!window.AmbientLightSensor,
-    batteryApi: !!navigator.getBattery,
-    storageEstimate: !!(navigator.storage && navigator.storage.estimate),
-    serviceWorker: 'serviceWorker' in navigator,
-    indexedDb: !!window.indexedDB,
-    webWorkers: !!window.Worker,
-    sharedWorkers: !!window.SharedWorker,
+    geolocation: !!navigator.geolocation,
+    
+    // Storage
+    localStorage: !!window.localStorage,
+    sessionStorage: !!window.sessionStorage,
+    indexedDB: !!window.indexedDB,
+    
+    // Network
     webSockets: !!window.WebSocket,
-    webRtc: !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection),
-    webVr: !!navigator.getVRDisplays,
-    webXr: !!navigator.xr,
-    gamepad: !!navigator.getGamepads,
-    bluetooth: !!navigator.bluetooth,
-    usb: !!navigator.usb,
-    notifications: 'Notification' in window,
-    mediaRecorder: !!window.MediaRecorder,
-    fullscreen: !!(document.documentElement.requestFullscreen || 
-                document.documentElement.webkitRequestFullScreen || 
-                document.documentElement.mozRequestFullScreen || 
-                document.documentElement.msRequestFullscreen),
-    screenWakeLock: 'wakeLock' in navigator,
-    speech: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
-    clipboard: !!(navigator.clipboard && navigator.clipboard.writeText),
-    pointerLock: 'pointerLockElement' in document
+    
+    // Media
+    getUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+    
+    // Misc
+    serviceWorker: 'serviceWorker' in navigator,
+    webWorker: !!window.Worker,
+    requestAnimationFrame: !!window.requestAnimationFrame,
+    devicePixelRatio: window.devicePixelRatio || 1
   };
 }
 
-// Export utility functions
-export {
-  isMobileDevice,
-  getDeviceOrientation,
-  addOrientationChangeListener,
-  getMobileDeviceInfo,
-  testDevicePerformance,
-  getDeviceCapabilities
-}; 
+/**
+ * Get battery status if available
+ * 
+ * @returns {Promise<Object|null>} Battery information or null if not available
+ */
+export function getBatteryStatus() {
+  if (navigator.getBattery) {
+    return navigator.getBattery().then(battery => ({
+      level: battery.level,
+      charging: battery.charging,
+      chargingTime: battery.chargingTime,
+      dischargingTime: battery.dischargingTime
+    })).catch(() => null);
+  }
+  return Promise.resolve(null);
+}
+
+/**
+ * Detect if battery saving is recommended
+ * Checks battery level, performance, and user preferences
+ * 
+ * @returns {Promise<boolean>} True if battery saving is recommended
+ */
+export async function shouldUseBatterySaving() {
+  // Check if user has requested reduced motion/data
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const prefersReducedData = navigator.connection && navigator.connection.saveData;
+  
+  if (prefersReducedMotion || prefersReducedData) {
+    return true;
+  }
+  
+  // Check battery status
+  const battery = await getBatteryStatus();
+  if (battery && !battery.charging && battery.level < 0.3) {
+    return true;
+  }
+  
+  // Check if it's a low-end device
+  const deviceInfo = await getMobileDeviceInfo();
+  if (deviceInfo.isLowEndDevice) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Add a listener for battery status changes
+ * 
+ * @param {Function} callback - Function to call when battery status changes
+ * @returns {Promise<Function|null>} Function to remove listener or null if not supported
+ */
+export async function addBatteryStatusListener(callback) {
+  if (!navigator.getBattery) {
+    return null;
+  }
+  
+  try {
+    const battery = await navigator.getBattery();
+    
+    const handleChange = () => {
+      callback({
+        level: battery.level,
+        charging: battery.charging,
+        chargingTime: battery.chargingTime,
+        dischargingTime: battery.dischargingTime
+      });
+    };
+    
+    // Listen for all battery events
+    battery.addEventListener('levelchange', handleChange);
+    battery.addEventListener('chargingchange', handleChange);
+    battery.addEventListener('chargingtimechange', handleChange);
+    battery.addEventListener('dischargingtimechange', handleChange);
+    
+    // Return function to remove listeners
+    return () => {
+      battery.removeEventListener('levelchange', handleChange);
+      battery.removeEventListener('chargingchange', handleChange);
+      battery.removeEventListener('chargingtimechange', handleChange);
+      battery.removeEventListener('dischargingtimechange', handleChange);
+    };
+  } catch (error) {
+    console.warn('Battery status API error:', error);
+    return null;
+  }
+}
