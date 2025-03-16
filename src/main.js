@@ -21,8 +21,102 @@ const ModelCache = {
   // Loader instance
   loader: new GLTFLoader(),
   
+  // Standard paths for capybara model - helps normalize path resolution
+  CAPYBARA_MODEL_PATHS: [
+    './character/capybara.glb',
+    './models/capybara.glb',
+    '/character/capybara.glb',
+    '/models/capybara.glb',
+    'character/capybara.glb',
+    'models/capybara.glb'
+  ],
+  
+  // Main capybara model reference - will be set during preload
+  capybaraModel: null,
+  
+  // Tracking load failures for improved diagnostics
+  failedPaths: new Set(),
+  
+  // Track remote players with loading issues for manual reload
+  playersWithLoadingIssues: new Map(),
+  
+  // Reset failed paths tracking
+  clearFailedPaths() {
+    this.failedPaths.clear();
+    console.log('Cleared failed paths tracking');
+  },
+  
+  // Register a player with loading issues
+  registerPlayerWithLoadingIssue(playerId, playerName) {
+    this.playersWithLoadingIssues.set(playerId, {
+      id: playerId,
+      name: playerName,
+      timestamp: Date.now()
+    });
+    console.log(`Registered player ${playerId} (${playerName}) with loading issues`);
+  },
+  
+  // Get list of players with loading issues
+  getPlayersWithLoadingIssues() {
+    return Array.from(this.playersWithLoadingIssues.values());
+  },
+  
+  // Clear specific player from loading issues list
+  clearPlayerLoadingIssue(playerId) {
+    if (this.playersWithLoadingIssues.has(playerId)) {
+      this.playersWithLoadingIssues.delete(playerId);
+      console.log(`Cleared player ${playerId} from loading issues list`);
+      return true;
+    }
+    return false;
+  },
+  
+  // Manually attempt to reload model for a specific player
+  async manuallyReloadModelFor(playerId) {
+    if (!this.playersWithLoadingIssues.has(playerId)) {
+      console.warn(`Player ${playerId} not registered with loading issues`);
+      return false;
+    }
+    
+    // Get remote player instance
+    const remotePlayer = remotePlayers.get(playerId);
+    if (!remotePlayer) {
+      console.warn(`Remote player ${playerId} not found`);
+      this.clearPlayerLoadingIssue(playerId);
+      return false;
+    }
+    
+    console.log(`Manually reloading model for player ${playerId}`);
+    
+    // Clear cache for this player
+    this.clearFailedPaths();
+    
+    // Force reload model for this player
+    try {
+      // First try to reload and cache the model globally
+      await this.preloadCapybaraModel();
+      
+      // Then reload for this specific player
+      if (remotePlayer.loadModel) {
+        remotePlayer.modelLoadAttempts = 0; // Reset attempts counter
+        remotePlayer.loadModel();
+        return true;
+      }
+    } catch (error) {
+      console.error(`Manual reload failed for player ${playerId}:`, error);
+    }
+    
+    return false;
+  },
+  
   // Get a model from cache or load it
   async getModel(path) {
+    // Skip paths that have consistently failed to avoid repeated failures
+    if (this.failedPaths.has(path)) {
+      console.warn(`Skipping previously failed path: ${path}`);
+      throw new Error(`Path previously failed: ${path}`);
+    }
+    
     // Check if model is already in cache
     if (this.cache.has(path)) {
       console.log(`Using cached model: ${path}`);
@@ -38,28 +132,93 @@ const ModelCache = {
       const gltf = await this.loader.loadAsync(path);
       // Store in cache
       this.cache.set(path, gltf);
+      console.log(`Successfully loaded and cached model: ${path}`);
       // Return a clone
       return this.cloneGltf(gltf);
     } catch (error) {
-      console.error(`Error loading model from ${path}:`, error);
-      throw error;
+      const errorMessage = `Error loading model from ${path}: ${error.message || 'Unknown error'}`;
+      console.error(errorMessage);
+      
+      // Log more diagnostic information
+      console.error(`File path attempted: ${new URL(path, window.location.href).href}`);
+      console.error(`Current origin: ${window.location.origin}`);
+      console.error(`Browser: ${navigator.userAgent}`);
+      console.error(`Error stack: ${error.stack || 'No stack available'}`);
+      
+      // Track this failed path
+      this.failedPaths.add(path);
+      
+      // Rethrow with more information
+      throw new Error(errorMessage);
     }
+  },
+  
+  // Specialized method just for preloading the capybara model
+  async preloadCapybaraModel() {
+    console.log('Attempting to preload capybara model...');
+    
+    // Try all possible paths until one works
+    try {
+      this.capybaraModel = await this.getModelWithFallbacks(this.CAPYBARA_MODEL_PATHS);
+      console.log('Successfully preloaded capybara model');
+      return true;
+    } catch (error) {
+      console.error('Failed to preload capybara model:', error);
+      return false;
+    }
+  },
+  
+  // Preload common models used in the game
+  async preloadModels() {
+    console.log('Preloading common models...');
+    
+    // First try to load the capybara model - this is the most important for multiplayer
+    await this.preloadCapybaraModel();
+    
+    // Preload other models and animations
+    const additionalModelPaths = [
+      './animations/idle.glb',
+      './animations/walk.glb'
+    ];
+    
+    // Load all models in parallel
+    const loadPromises = additionalModelPaths.map(path => 
+      this.getModel(path).catch(error => {
+        console.warn(`Preloading failed for ${path}:`, error);
+        // Don't reject the whole promise chain for preloading
+        return null;
+      })
+    );
+    
+    // Wait for all to complete
+    await Promise.all(loadPromises);
+    console.log('Preloading complete');
   },
   
   // Try loading a model with multiple path attempts
   async getModelWithFallbacks(paths) {
+    console.log(`Attempting to load model with ${paths.length} fallback paths`);
+    
+    // Track all errors for diagnostic purposes
+    const errors = [];
+    
     // Try each path in sequence
     for (const path of paths) {
       try {
+        console.log(`Trying path: ${path}`);
         return await this.getModel(path);
       } catch (error) {
-        console.warn(`Failed to load model from ${path}, trying next path`);
+        console.warn(`Failed to load model from ${path}, trying next path. Error: ${error.message}`);
+        errors.push({ path, error: error.message });
         // Continue to next path
       }
     }
     
     // If we get here, all paths failed
-    throw new Error(`Failed to load model from any of the provided paths: ${paths.join(', ')}`);
+    const errorDetails = errors.map(e => `- ${e.path}: ${e.error}`).join('\n');
+    const errorMessage = `Failed to load model from any of the provided paths:\n${errorDetails}`;
+    console.error(errorMessage);
+    throw new Error(errorMessage);
   },
   
   // Clone a GLTF object to avoid sharing the same instance
@@ -82,28 +241,15 @@ const ModelCache = {
     return clone;
   },
   
-  // Preload common models used in the game
-  async preloadModels() {
-    console.log('Preloading common models...');
-    const modelPaths = [
-      './character/capybara.glb',
-      './models/capybara.glb',
-      './animations/idle.glb',
-      './animations/walk.glb'
-    ];
+  // Get a clone of the preloaded capybara model
+  getCapybaraModelClone() {
+    if (this.capybaraModel) {
+      console.log('Using preloaded capybara model');
+      return this.cloneGltf(this.capybaraModel);
+    }
     
-    // Load all models in parallel
-    const loadPromises = modelPaths.map(path => 
-      this.getModel(path).catch(error => {
-        console.warn(`Preloading failed for ${path}:`, error);
-        // Don't reject the whole promise chain for preloading
-        return null;
-      })
-    );
-    
-    // Wait for all to complete
-    await Promise.all(loadPromises);
-    console.log('Preloading complete');
+    console.warn('Capybara model not preloaded, will try to load it on demand');
+    return null;
   }
 };
 
@@ -121,41 +267,115 @@ class RemotePlayer {
     this.currentAnimation = null;
     this.lastUpdate = Date.now();
     this.nameLabel = null;
-    this.debugObject = null;
     this.modelLoadAttempts = 0;
     this.maxLoadAttempts = 3;
     console.log(`RemotePlayer constructor: ${id}, ${name}, position:`, this.position);
     
-    // Create a simple debug object to make remote players immediately visible
-    this.createDebugObject();
-    
-    // Load the actual model
-    this.loadModel();
+    // Immediately load and show the model (no debug cube)
+    this.loadModelImmediately();
   }
   
-  createDebugObject() {
-    // Create a simple colored cube as a debug visual
-    const geometry = new THREE.BoxGeometry(0.5, 1, 0.5);
-    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    this.debugObject = new THREE.Mesh(geometry, material);
+  // Load and show the model immediately without debug cube
+  async loadModelImmediately() {
+    console.log(`Loading model immediately for player ${this.id}`);
     
-    // Position it at the remote player's location
-    this.debugObject.position.set(
-      this.position.x,
-      this.position.y + 0.5, // Raise it slightly to be more visible
-      this.position.z
-    );
-    
-    console.log(`Creating debug object for ${this.id} at position:`, this.debugObject.position);
-    
-    // Add to scene immediately
-    scene.add(this.debugObject);
-    
-    // Create a temporary name label for the debug object
-    this.createTempNameLabel();
+    try {
+      // First try to use the preloaded model from cache
+      const preloadedModel = ModelCache.getCapybaraModelClone();
+      
+      if (preloadedModel) {
+        console.log(`Using preloaded capybara model for player ${this.id}`);
+        this.processLoadedModel(preloadedModel);
+        return;
+      }
+      
+      // If preloaded model not available, load it right away
+      console.log(`No preloaded model available, loading model for player ${this.id}`);
+      const loadedModel = await ModelCache.getModelWithFallbacks(ModelCache.CAPYBARA_MODEL_PATHS);
+      console.log(`Model loaded successfully for player ${this.id}`);
+      this.processLoadedModel(loadedModel);
+      
+    } catch (error) {
+      console.error(`Error loading model for player ${this.id}:`, error);
+      ModelCache.registerPlayerWithLoadingIssue(this.id, this.name);
+      
+      // Try recovery immediately
+      this.retryLoading();
+    }
   }
   
-  createTempNameLabel() {
+  // Retry loading the model
+  retryLoading() {
+    this.modelLoadAttempts++;
+    
+    if (this.modelLoadAttempts >= this.maxLoadAttempts) {
+      console.error(`Failed to load model for player ${this.id} after ${this.maxLoadAttempts} attempts`);
+      // Add a UI indicator that this player has loading issues
+      this.addManualReloadButton();
+      return;
+    }
+    
+    // Retry with exponential backoff
+    const delay = Math.min(2000 * Math.pow(1.5, this.modelLoadAttempts - 1), 10000);
+    console.log(`Retrying model load for player ${this.id} in ${delay/1000} seconds...`);
+    
+    setTimeout(() => {
+      this.loadModelImmediately();
+    }, delay);
+  }
+  
+  // Process a successfully loaded model
+  processLoadedModel(gltf) {
+    this.model = gltf.scene;
+    this.model.scale.set(0.5, 0.5, 0.5);
+    
+    // Set initial position and rotation
+    if (this.position) {
+      this.model.position.set(this.position.x, this.position.y, this.position.z);
+      console.log(`Set model position for ${this.id} to:`, this.position);
+    } else {
+      this.model.position.set(0, 1, 0);
+      console.log(`No position provided for ${this.id}, using default`);
+    }
+    
+    if (this.rotation) {
+      this.model.rotation.y = this.rotation.y;
+    }
+    
+    this.model.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+      }
+    });
+    
+    // Create animation mixer
+    this.mixer = new THREE.AnimationMixer(this.model);
+    
+    // Store animations by name
+    gltf.animations.forEach((clip) => {
+      const action = this.mixer.clipAction(clip);
+      this.animations[clip.name] = action;
+    });
+    
+    // Set initial animation
+    this.playAnimation('idle');
+    
+    // Add to scene
+    scene.add(this.model);
+    console.log(`Added model to scene for player ${this.id}`);
+    
+    // Create name label for the model
+    this.createNameLabel();
+    
+    // Clear from loading issues if it was registered
+    ModelCache.clearPlayerLoadingIssue(this.id);
+  }
+  
+  // Create name label directly on the model
+  createNameLabel() {
+    if (!this.model) return; // Skip if no model
+    
     // Create canvas for the name label
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
@@ -182,115 +402,13 @@ class RemotePlayer {
     
     // Create sprite
     this.nameLabel = new THREE.Sprite(material);
-    this.nameLabel.scale.set(1, 0.25, 1);
+    this.nameLabel.scale.set(1.5, 0.3, 1);
     
-    // Position above debug object
-    this.nameLabel.position.set(0, 1.2, 0);
-    this.debugObject.add(this.nameLabel);
-  }
-
-  loadModel() {
-    this.modelLoadAttempts++;
-    console.log(`Starting model load for player ${this.id} (attempt ${this.modelLoadAttempts})`);
+    // Position above model
+    this.nameLabel.position.set(0, 1.5, 0);
     
-    // Create an absolute path for the model based on the current window location
-    const baseUrl = window.location.origin;
-    const modelPath = new URL('models/capybara.glb', baseUrl).href;
-    console.log(`Loading model from absolute path: ${modelPath}`);
-    
-    // Verify model path existence with a HEAD request before attempting to load
-    fetch(modelPath, { method: 'HEAD' })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Model file not found: ${response.status} ${response.statusText}`);
-        }
-        console.log(`Model file exists at ${modelPath}, proceeding with load`);
-        
-        // Use the same model as the local player
-        const loader = new GLTFLoader();
-        loader.load(modelPath, 
-          // Success callback
-          (gltf) => {
-            console.log(`Model loaded successfully for player ${this.id}`);
-            this.model = gltf.scene;
-            this.model.scale.set(0.5, 0.5, 0.5);
-            
-            // Set initial position and rotation
-            if (this.position) {
-              this.model.position.set(this.position.x, this.position.y, this.position.z);
-              console.log(`Set model position for ${this.id} to:`, this.position);
-            } else {
-              this.model.position.set(0, 1, 0);
-              console.log(`No position provided for ${this.id}, using default`);
-            }
-            
-            if (this.rotation) {
-              this.model.rotation.y = this.rotation.y;
-            }
-            
-            this.model.traverse((node) => {
-              if (node.isMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
-              }
-            });
-            
-            // Create animation mixer
-            this.mixer = new THREE.AnimationMixer(this.model);
-            
-            // Store animations by name
-            gltf.animations.forEach((clip) => {
-              const action = this.mixer.clipAction(clip);
-              this.animations[clip.name] = action;
-            });
-            
-            // Set initial animation
-            this.playAnimation('idle');
-            
-            // Add to scene
-            scene.add(this.model);
-            console.log(`Added model to scene for player ${this.id}`);
-            
-            // Create name label for the actual model
-            this.createNameLabel();
-            
-            // Remove the debug object once the model is loaded
-            this.removeDebugObject();
-          },
-          // Progress callback
-          (xhr) => {
-            if (xhr.total) {
-              console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
-            } else {
-              console.log(`Model ${this.id} loading progress: ${xhr.loaded} bytes loaded`);
-            }
-          },
-          // Error callback
-          (error) => {
-            console.error(`Error loading model for player ${this.id}:`, error);
-            
-            // Check if the model path might be wrong
-            if (error.message && error.message.includes('404')) {
-              console.error(`Model not found at path: ${modelPath}. Trying alternative path...`);
-              // Try alternative paths
-              this.tryAlternativePaths();
-            } else {
-              // Retry loading if under max attempts
-              if (this.modelLoadAttempts < this.maxLoadAttempts) {
-                console.log(`Retrying model load for player ${this.id} in 2 seconds...`);
-                setTimeout(() => this.loadModel(), 2000);
-              } else {
-                console.error(`Failed to load model for player ${this.id} after ${this.maxLoadAttempts} attempts`);
-              }
-            }
-          }
-        );
-      })
-      .catch(error => {
-        console.error(`Error checking model path: ${error.message}`);
-        // Try alternative paths if the HEAD request fails
-        this.tryAlternativePaths();
-      });
+    // Add to model
+    this.model.add(this.nameLabel);
   }
   
   tryAlternativePaths() {
@@ -380,7 +498,7 @@ class RemotePlayer {
             this.modelLoadAttempts++;
             const delay = this.modelLoadAttempts * 2000; // Exponential backoff
             console.log(`Retrying model load in ${delay/1000} seconds...`);
-            setTimeout(() => this.loadModel(), delay);
+            setTimeout(() => this.loadModelImmediately(), delay);
           }
         }
       );
@@ -453,48 +571,33 @@ class RemotePlayer {
   removeDebugObject() {
     if (this.debugObject) {
       console.log(`Removing debug object for player ${this.id}`);
-      // If the debug object has the name label, remove it first
-      if (this.nameLabel && this.debugObject.children.includes(this.nameLabel)) {
-        this.debugObject.remove(this.nameLabel);
+      
+      // Ensure model is exactly at the debug object position before removing it
+      if (this.model && this.debugObject) {
+        // Get the exact position and rotation from the debug object
+        const debugPosition = this.debugObject.position.clone();
+        const debugRotation = this.debugObject.rotation.y;
+        
+        // Apply them to the model (subtracting the cube's position offset)
+        this.model.position.set(
+          debugPosition.x,
+          debugPosition.y - 0.5, // Adjust for the cube's raised position
+          debugPosition.z
+        );
+        this.model.rotation.y = debugRotation;
+        
+        console.log(`Synchronized model position with debug cube for ${this.id}:`, this.model.position);
       }
+      
+      // If we have a name label on the debug object, transfer it to the model if needed
+      if (this.debugObject.children.length > 0 && this.debugObject.children[0].isSprite) {
+        // We already created a new label in createNameLabel for the model,
+        // so we just remove the old one by leaving it attached to the debug object
+      }
+      
+      // Remove from scene
       scene.remove(this.debugObject);
       this.debugObject = null;
-    }
-  }
-  
-  createNameLabel() {
-    // Create canvas for the name label
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 256;
-    canvas.height = 64;
-    
-    // Draw background
-    context.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw text
-    context.font = 'bold 32px Arial';
-    context.fillStyle = 'white';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(this.name, canvas.width / 2, canvas.height / 2);
-    
-    // Create texture from canvas
-    const texture = new THREE.Texture(canvas);
-    texture.needsUpdate = true;
-    
-    // Create sprite material
-    const material = new THREE.SpriteMaterial({ map: texture });
-    
-    // Create sprite
-    this.nameLabel = new THREE.Sprite(material);
-    this.nameLabel.scale.set(1, 0.25, 1);
-    
-    // Add to scene
-    if (this.model) {
-      this.nameLabel.position.set(0, 1.2, 0); // Position above character
-      this.model.add(this.nameLabel);
     }
   }
   
@@ -514,12 +617,6 @@ class RemotePlayer {
     this.animationState = animationState;
     this.lastUpdate = Date.now();
     
-    // Update debug object if it exists
-    if (this.debugObject) {
-      this.debugObject.position.set(position.x, position.y + 0.5, position.z);
-      console.log(`Updated debug object position for ${this.id}:`, this.debugObject.position);
-    }
-    
     if (this.model) {
       // Apply position with interpolation
       const targetPosition = new THREE.Vector3(position.x, position.y, position.z);
@@ -537,6 +634,12 @@ class RemotePlayer {
       }
     } else {
       console.warn(`RemotePlayer ${this.id} model not loaded yet, position update queued`);
+      
+      // If model still loading, trigger a retry (might have failed silently)
+      if (this.modelLoadAttempts > 0 && Date.now() - this.lastUpdate > 5000) {
+        console.log(`Model still not loaded after position update, retrying load for ${this.id}`);
+        this.loadModelImmediately();
+      }
     }
   }
   
@@ -561,9 +664,6 @@ class RemotePlayer {
   }
   
   remove() {
-    // Remove the debug object if it exists
-    this.removeDebugObject();
-    
     // Remove the model if it exists
     if (this.model) {
       console.log(`Removing model for player ${this.id}`);
@@ -580,6 +680,86 @@ class RemotePlayer {
     // Clear animations
     this.animations = {};
     this.currentAnimation = null;
+    
+    // Remove any UI elements for this player
+    const reloadButton = document.getElementById(`reload-button-${this.id}`);
+    if (reloadButton) {
+      const buttonContainer = reloadButton.parentElement;
+      if (buttonContainer) {
+        buttonContainer.remove();
+      }
+    }
+    
+    // Clear from loading issues tracking
+    ModelCache.clearPlayerLoadingIssue(this.id);
+  }
+  
+  // Add a UI button for manual reload if needed
+  addManualReloadButton() {
+    // Only add if model not loaded
+    if (this.model) return;
+    
+    // Check if there's already a button for this player
+    const existingButton = document.getElementById(`reload-button-${this.id}`);
+    if (existingButton) return;
+    
+    // Create manual reload UI if not exists
+    let reloadContainer = document.getElementById('model-reload-container');
+    if (!reloadContainer) {
+      reloadContainer = document.createElement('div');
+      reloadContainer.id = 'model-reload-container';
+      reloadContainer.style.position = 'fixed';
+      reloadContainer.style.bottom = '10px';
+      reloadContainer.style.right = '10px';
+      reloadContainer.style.background = 'rgba(0,0,0,0.7)';
+      reloadContainer.style.color = 'white';
+      reloadContainer.style.padding = '10px';
+      reloadContainer.style.borderRadius = '5px';
+      reloadContainer.style.zIndex = '1000';
+      reloadContainer.innerHTML = '<h3>Player Model Loading Issues</h3>';
+      document.body.appendChild(reloadContainer);
+    }
+    
+    // Add button for this player
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.margin = '5px 0';
+    
+    const playerInfo = document.createElement('div');
+    playerInfo.innerText = `${this.name} is not visible`;
+    playerInfo.style.marginBottom = '5px';
+    buttonContainer.appendChild(playerInfo);
+    
+    const reloadButton = document.createElement('button');
+    reloadButton.id = `reload-button-${this.id}`;
+    reloadButton.innerText = `Load model for ${this.name}`;
+    reloadButton.style.marginRight = '5px';
+    reloadButton.addEventListener('click', () => {
+      // Disable button during reload
+      reloadButton.disabled = true;
+      reloadButton.innerText = 'Loading...';
+      
+      // Attempt manual reload
+      ModelCache.manuallyReloadModelFor(this.id)
+        .then(success => {
+          if (success) {
+            // Remove this button if successful
+            buttonContainer.remove();
+            
+            // Check if container is now empty
+            if (reloadContainer.querySelectorAll('button').length === 0) {
+              // Only has the header left, remove it
+              reloadContainer.remove();
+            }
+          } else {
+            // Re-enable button if failed
+            reloadButton.disabled = false;
+            reloadButton.innerText = `Retry loading ${this.name}`;
+          }
+        });
+    });
+    
+    buttonContainer.appendChild(reloadButton);
+    reloadContainer.appendChild(buttonContainer);
   }
 }
 
@@ -1205,9 +1385,19 @@ function createTemporaryCapybara() {
 // Load character and animations
 async function loadModels() {
   try {
-    // Load the capybara model
-    const characterModel = await loader.loadAsync('./character/capybara.glb');
-    character = characterModel.scene;
+    // Use the preloaded capybara model for local player
+    console.log('Getting preloaded capybara model for local player');
+    const characterGltf = ModelCache.getCapybaraModelClone();
+    
+    if (!characterGltf) {
+      console.warn('Preloaded model not available, loading directly');
+      // Fall back to direct loading if preloaded model is not available
+      const loadedModel = await ModelCache.getModelWithFallbacks(ModelCache.CAPYBARA_MODEL_PATHS);
+      character = loadedModel.scene;
+    } else {
+      character = characterGltf.scene;
+    }
+    
     character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
     character.castShadow = true;
     character.position.set(0, 1, 0);
@@ -1231,9 +1421,9 @@ async function loadModels() {
     // Load animations
     mixer = new THREE.AnimationMixer(character);
     
-    // Load required animations first
-    const idleModel = await loader.loadAsync('./animations/idle.glb');
-    const walkModel = await loader.loadAsync('./animations/walk.glb');
+    // Load required animations using ModelCache
+    const idleModel = await ModelCache.getModel('./animations/idle.glb');
+    const walkModel = await ModelCache.getModel('./animations/walk.glb');
     
     idleAction = mixer.clipAction(idleModel.animations[0]);
     walkAction = mixer.clipAction(walkModel.animations[0]);
@@ -1670,6 +1860,11 @@ function animate() {
   const delta = clock.getDelta();
   const elapsedTime = clock.getElapsedTime() * 1000; // Convert to milliseconds
   
+  // Check for model recovery every 30 seconds (only if there are issues)
+  if (ModelCache.getPlayersWithLoadingIssues().length > 0 && Math.floor(elapsedTime / 30000) !== Math.floor((elapsedTime - delta * 1000) / 30000)) {
+    attemptModelRecoveryForAllPlayers();
+  }
+  
   // Update physics
   if (physicsInitialized && world) {
     world.step();
@@ -1879,6 +2074,11 @@ async function init() {
     // This will be overridden by the third person camera
     camera.position.set(0, 15, 20);
     camera.lookAt(0, 0, 0);
+    
+    // Preload models first to ensure they're available for multiplayer
+    console.log('Preloading models...');
+    await ModelCache.preloadModels();
+    console.log('Models preloaded successfully');
     
     // Initialize RAPIER first
     if (isMobileDevice()) logToDebugPanel('Initializing RAPIER physics', 'info');
@@ -2122,6 +2322,13 @@ async function init() {
     
     // Start the animation loop
     animate();
+    
+    // Initialize multiplayer connections
+    console.log('Initializing multiplayer connections');
+    await initSocketConnection(); // Now awaiting this function
+    console.log('Multiplayer connections initialized');
+    
+    // Additional initialization code here
     
     console.log("Initialization completed successfully");
   } catch (error) {
@@ -2469,23 +2676,30 @@ function createPlayerNameLabel(name) {
   return nameLabel;
 }
 
-function initSocketConnection() {
-  // Connect to Socket.io server
-  console.log('Attempting to connect to server at:', SERVER_URL);
+// Initialize socket connection and handle events
+async function initSocketConnection() {
+  console.log(`Connecting to server at ${SERVER_URL}`);
+  
+  // Make sure models are preloaded before we start handling multiplayer
+  await ModelCache.preloadModels();
+  
   socket = io(SERVER_URL);
   
-  // Handle connection
   socket.on('connect', () => {
     console.log('Connected to server with id:', socket.id);
     
-    // Join game with player name
+    // Join the game with our name
     socket.emit('join', { name: playerName });
-    console.log('Emitted join event with name:', playerName);
   });
   
-  // Handle disconnection
   socket.on('disconnect', () => {
     console.log('Disconnected from server');
+    
+    // Clear all remote players on disconnect
+    remotePlayers.forEach((player, id) => {
+      player.remove();
+    });
+    remotePlayers.clear();
   });
   
   // Handle game state (received on join)
@@ -2597,6 +2811,48 @@ function removeRemotePlayer(playerId) {
   if (remotePlayer) {
     remotePlayer.remove();
     remotePlayers.delete(playerId);
+  }
+}
+
+// Try to recover models for all players with loading issues
+async function attemptModelRecoveryForAllPlayers() {
+  console.log('Attempting automatic model recovery for all players with loading issues');
+  
+  const playersWithIssues = ModelCache.getPlayersWithLoadingIssues();
+  if (playersWithIssues.length === 0) {
+    console.log('No players with loading issues found');
+    return;
+  }
+  
+  console.log(`Found ${playersWithIssues.length} players with loading issues, attempting recovery`);
+  
+  // Clear model cache to force fresh loading
+  ModelCache.clearFailedPaths();
+  
+  // Try to reload the capybara model completely
+  const reloadSuccessful = await ModelCache.preloadCapybaraModel();
+  
+  if (!reloadSuccessful) {
+    console.error('Failed to reload capybara model, recovery unlikely to succeed');
+    return;
+  }
+  
+  // Try to recover each player
+  for (const playerInfo of playersWithIssues) {
+    const playerId = playerInfo.id;
+    const remotePlayer = remotePlayers.get(playerId);
+    
+    if (!remotePlayer) {
+      console.log(`Player ${playerId} no longer exists, removing from issues list`);
+      ModelCache.clearPlayerLoadingIssue(playerId);
+      continue;
+    }
+    
+    console.log(`Attempting recovery for player ${playerId} (${playerInfo.name})`);
+    
+    // Reset attempts counter and try again
+    remotePlayer.modelLoadAttempts = 0;
+    remotePlayer.loadModelImmediately();
   }
 }
 
