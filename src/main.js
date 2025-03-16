@@ -6,8 +6,9 @@ import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import ThirdPersonCamera from './ThirdPersonCamera.js';
 import InputManager from './utils/InputManager.js';
 import NatureEnvironment from './NatureEnvironment.js';
-import { isMobileDevice } from './utils/DeviceDetector.js';
+import { isMobileDevice, getMobileDeviceInfo, getDeviceOrientation, addOrientationChangeListener } from './utils/DeviceDetector.js';
 import MobileJoystick from './utils/MobileControls.js';
+import { initMobileDebugger, logToDebugPanel } from './utils/MobileDebugger.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -555,9 +556,17 @@ let isMobile = false;
 
 // Initialize RAPIER before using it
 async function initRapier() {
-  rapier = await RAPIER;
-  console.log('RAPIER physics initialized successfully');
-  return rapier;
+  try {
+    if (isMobileDevice()) logToDebugPanel('Loading RAPIER WASM module', 'info');
+    rapier = await RAPIER;
+    if (isMobileDevice()) logToDebugPanel('RAPIER WASM loaded successfully', 'info');
+    console.log('RAPIER physics initialized successfully');
+    return rapier;
+  } catch (error) {
+    console.error('Error initializing RAPIER:', error);
+    if (isMobileDevice()) logToDebugPanel(`Error initializing RAPIER: ${error.message}`, 'error');
+    return false;
+  }
 }
 
 async function initPhysics() {
@@ -667,6 +676,7 @@ async function loadModels() {
     console.log("Models loaded successfully");
   } catch (error) {
     console.error("Error loading models:", error);
+    if (isMobileDevice()) logToDebugPanel(`Error loading models: ${error.message}`, 'error');
     // Fallback to temporary capybara if loading fails
     createTemporaryCapybara();
   }
@@ -1241,22 +1251,34 @@ function updateOrangePosition() {
 // Initialize and start
 async function init() {
   try {
+    // Initialize mobile debugger for mobile devices
+    initMobileDebugger();
+    if (isMobileDevice()) logToDebugPanel('Starting initialization', 'info');
+    
     // Set initial camera position high enough to see the ground
     // This will be overridden by the third person camera
     camera.position.set(0, 15, 20);
     camera.lookAt(0, 0, 0);
     
     // Initialize RAPIER first
+    if (isMobileDevice()) logToDebugPanel('Initializing RAPIER physics', 'info');
     await initRapier();
+    if (isMobileDevice()) logToDebugPanel('RAPIER initialized successfully', 'info');
     
     // Initialize physics
+    if (isMobileDevice()) logToDebugPanel('Setting up physics world', 'info');
     await initPhysics();
+    if (isMobileDevice()) logToDebugPanel('Physics world set up', 'info');
     
     // Create ground
+    if (isMobileDevice()) logToDebugPanel('Creating ground', 'info');
     createGround();
+    if (isMobileDevice()) logToDebugPanel('Ground created', 'info');
     
     // Load models
+    if (isMobileDevice()) logToDebugPanel('Loading 3D models', 'info');
     await loadModels();
+    if (isMobileDevice()) logToDebugPanel('Models loaded successfully', 'info');
     
     // Check if we're on a mobile device and get device info
     isMobile = isMobileDevice();
@@ -1431,6 +1453,24 @@ async function init() {
     console.log("Initialization completed successfully");
   } catch (error) {
     console.error("Error during initialization:", error);
+    if (isMobileDevice()) logToDebugPanel(`Initialization error: ${error.message}`, 'error');
+    
+    // Create a simple error message on screen
+    const errorContainer = document.createElement('div');
+    errorContainer.style.position = 'absolute';
+    errorContainer.style.top = '50%';
+    errorContainer.style.left = '50%';
+    errorContainer.style.transform = 'translate(-50%, -50%)';
+    errorContainer.style.color = 'white';
+    errorContainer.style.backgroundColor = 'rgba(255,0,0,0.7)';
+    errorContainer.style.padding = '20px';
+    errorContainer.style.borderRadius = '10px';
+    errorContainer.style.fontFamily = 'Arial, sans-serif';
+    errorContainer.style.fontSize = '16px';
+    errorContainer.style.maxWidth = '80%';
+    errorContainer.style.textAlign = 'center';
+    errorContainer.innerHTML = `<strong>Error loading Capyverse:</strong><br>${error.message}<br><br>Try refreshing the page or using a different browser.`;
+    document.body.appendChild(errorContainer);
   }
 }
 

@@ -368,3 +368,58 @@
     left: 40px;
   }
 }
+
+/* Add or update the debug container styles */
+#debug-container {
+  display: none; /* Hidden by default, shown via JS for mobile */
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2000;
+}
+
+#debug-button {
+  background-color: rgba(255, 0, 0, 0.8);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulsate 2s infinite alternate;
+}
+
+@keyframes pulsate {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+#debug-panel {
+  display: none;
+  position: fixed;
+  bottom: 90px;
+  right: 10px;
+  width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: rgba(0, 0, 0, 0.85);
+  color: white;
+  border-radius: 5px;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+  z-index: 1999;
+}
