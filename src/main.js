@@ -9,6 +9,7 @@ import NatureEnvironment from './NatureEnvironment.js';
 import { isMobileDevice, getMobileDeviceInfo, getDeviceOrientation, addOrientationChangeListener } from './utils/DeviceDetector.js';
 import MobileJoystick from './utils/MobileControls.js';
 import { initMobileDebugger, logToDebugPanel } from './utils/MobileDebugger.js';
+import PlayerNameModal from './utils/PlayerNameModal.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -554,6 +555,14 @@ const loader = new GLTFLoader();
 let mobileJoystick = null;
 let isMobile = false;
 
+// Add multiplayer variables
+let multiplayerManager = null;
+let playerNameModal = null;
+let playerName = '';
+let isMultiplayerEnabled = true; // Set to true to enable multiplayer by default
+let lastUpdateTime = 0; // For rate limiting multiplayer updates
+const UPDATE_INTERVAL = 100; // Send updates every 100ms (10 updates per second)
+
 // Initialize RAPIER before using it
 async function initRapier() {
   try {
@@ -1079,11 +1088,13 @@ function handleCharacterMovement(deltaTime) {
 
 // Animation loop
 const clock = new THREE.Clock();
+
 function animate() {
   requestAnimationFrame(animate);
   
   // Calculate delta time
   const delta = clock.getDelta();
+  const elapsedTime = clock.getElapsedTime() * 1000; // Convert to milliseconds
   
   // Update physics
   if (physicsInitialized && world) {
@@ -1148,6 +1159,7 @@ function animate() {
   }
   
   // Update character animations
+  let currentAnimationState = 'idle';
   if (mixer) {
     mixer.update(delta);
     
@@ -1165,16 +1177,19 @@ function animate() {
         // Only switch to jump animation when we first leave the ground
         if (groundedChanged || activeAction !== jumpAction) {
           fadeToAction(jumpAction);
+          currentAnimationState = 'jump';
         }
       } else if (isMoving) {
         // Only switch to walk animation when we start moving
         if (movementChanged || (groundedChanged && activeAction === jumpAction) || activeAction === idleAction) {
           fadeToAction(walkAction);
+          currentAnimationState = 'walk';
         }
       } else {
         // Only switch to idle animation when we stop moving
         if (movementChanged || (groundedChanged && activeAction === jumpAction)) {
           fadeToAction(idleAction);
+          currentAnimationState = 'idle';
         }
       }
       
@@ -1199,6 +1214,24 @@ function animate() {
       console.error("Error updating camera:", error);
     }
   }
+  
+  // Update multiplayer - send position updates at a limited rate
+  if (isMultiplayerEnabled && multiplayerManager && multiplayerManager.isConnected && 
+      character && characterBody && elapsedTime - lastUpdateTime > UPDATE_INTERVAL) {
+    
+    // Get character position and rotation
+    const position = characterBody.translation();
+    const rotation = { y: character.rotation.y };
+    
+    // Send position update to server
+    // This will be implemented in the next phase with Socket.io
+    
+    // Update last update time
+    lastUpdateTime = elapsedTime;
+  }
+  
+  // Update remote players with interpolation
+  // This will be implemented in the next phase with Socket.io
   
   // Update nature environment if it exists
   if (natureEnvironment) {
@@ -1466,6 +1499,25 @@ async function init() {
     
     // Hide instructions by default
     instructions.style.display = 'none';
+    
+    // Initialize multiplayer if enabled
+    if (isMultiplayerEnabled) {
+      // Initialize player name modal
+      playerNameModal = new PlayerNameModal();
+      
+      // Set callback for when player enters their name
+      playerNameModal.onSubmit((name) => {
+        playerName = name;
+        
+        // Connect to WebSocket server will be implemented later
+        console.log(`Player name set to: ${playerName}`);
+        
+        // We'll implement server connection here in the next phase
+      });
+      
+      // Show player name modal
+      playerNameModal.show();
+    }
     
     // Start the animation loop
     animate();
