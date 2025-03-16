@@ -153,18 +153,21 @@ class MobileJoystick {
     console.log('MobileJoystick: DEBUG - Adjusting position for orientation:', this.orientation);
     
     if (this.orientation === 'portrait') {
-      // Position in the lower right corner for portrait
+      // Position in the lower right corner for portrait - moved further left to prevent cutoff
       this.base.style.bottom = '30px';
       this.base.style.left = 'auto';
-      this.base.style.right = '60px';
+      this.base.style.right = '80px'; // Increased from 60px to 80px to prevent cutoff
       console.log('MobileJoystick: DEBUG - Positioned in lower right (portrait)');
     } else {
-      // Landscape orientation - position in the lower right corner
+      // Landscape orientation - position in the lower right corner - moved further left
       this.base.style.bottom = '20px';
       this.base.style.left = 'auto';
-      this.base.style.right = '50px';
+      this.base.style.right = '70px'; // Increased from 50px to 70px to prevent cutoff
       console.log('MobileJoystick: DEBUG - Positioned in lower right (landscape)');
     }
+    
+    // Force layout recalculation to prevent delayed positioning
+    this.base.getBoundingClientRect();
   }
   
   /**
