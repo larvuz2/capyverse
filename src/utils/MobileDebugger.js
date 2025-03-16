@@ -54,17 +54,6 @@ export function initMobileDebugger() {
 }
 
 /**
- * Check if current device is mobile
- */
-function isMobileDevice() {
-  const userAgent = navigator.userAgent.toLowerCase();
-  const isMobileUserAgent = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(userAgent);
-  const hasTouchCapability = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  
-  return isMobileUserAgent || hasTouchCapability;
-}
-
-/**
  * Set up monitoring for WebGL context
  */
 function setupWebGLMonitoring() {
