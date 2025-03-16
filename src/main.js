@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import * as RAPIER from '@dimforge/rapier3d';
+import RAPIER from '@dimforge/rapier3d';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import ThirdPersonCamera from './ThirdPersonCamera.js';
 import InputManager from './utils/InputManager.js';
@@ -527,7 +527,7 @@ scene.add(directionalLight);
 // Physics setup
 let world, characterBody;
 let physicsInitialized = false;
-let rapier = RAPIER;
+let rapier; // Store the initialized RAPIER module
 
 // Animation and movement state
 let isGrounded = true;
@@ -553,8 +553,20 @@ const loader = new GLTFLoader();
 let mobileJoystick = null;
 let isMobile = false;
 
+// Initialize RAPIER before using it
+async function initRapier() {
+  rapier = await RAPIER;
+  console.log('RAPIER physics initialized successfully');
+  return rapier;
+}
+
 async function initPhysics() {
   try {
+    if (!rapier) {
+      console.error('RAPIER not initialized, waiting...');
+      await initRapier();
+    }
+    
     // Create a physics world with gravity from config
     world = new rapier.World({ x: 0.0, y: config.physics.gravity, z: 0.0 });
     
@@ -1234,7 +1246,10 @@ async function init() {
     camera.position.set(0, 15, 20);
     camera.lookAt(0, 0, 0);
     
-    // Initialize physics first
+    // Initialize RAPIER first
+    await initRapier();
+    
+    // Initialize physics
     await initPhysics();
     
     // Create ground
