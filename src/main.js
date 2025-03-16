@@ -1319,9 +1319,6 @@ const isMultiplayerEnabled = true;
 
 // Global variables needed for movement
 let velocity = new THREE.Vector3();
-// Default forward direction - set if not already defined
-if (typeof lastDirection === 'undefined') {
-  let lastDirection = new THREE.Vector3(0, 0, -1); 
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 
 // Camera controllers
