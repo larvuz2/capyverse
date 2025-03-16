@@ -3,7 +3,7 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 
 export default defineConfig({
-  base: process.env.NODE_ENV === 'production' ? '/capyverse/' : '/',
+  base: './',
   plugins: [
     wasm(),
     topLevelAwait()
