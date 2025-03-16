@@ -18,12 +18,13 @@ class RemotePlayer {
   constructor(id, name, position, rotation) {
     this.id = id;
     this.name = name;
-    this.position = position;
-    this.rotation = rotation;
+    this.position = position || { x: 0, y: 1, z: 0 };
+    this.rotation = rotation || { y: 0 };
     this.animationState = 'idle';
     this.model = null;
     this.mixer = null;
     this.animations = {};
+    this.currentAnimation = null;
     this.lastUpdate = Date.now();
     this.nameLabel = null;
     this.loadModel();
@@ -35,8 +36,17 @@ class RemotePlayer {
     loader.load('models/capybara.glb', (gltf) => {
       this.model = gltf.scene;
       this.model.scale.set(0.5, 0.5, 0.5);
-      this.model.position.copy(this.position);
-      this.model.rotation.y = this.rotation.y;
+      
+      // Set initial position and rotation
+      if (this.position) {
+        this.model.position.set(this.position.x, this.position.y, this.position.z);
+      } else {
+        this.model.position.set(0, 1, 0);
+      }
+      
+      if (this.rotation) {
+        this.model.rotation.y = this.rotation.y;
+      }
       
       this.model.traverse((node) => {
         if (node.isMesh) {
@@ -50,7 +60,8 @@ class RemotePlayer {
       
       // Store animations by name
       gltf.animations.forEach((clip) => {
-        this.animations[clip.name] = this.mixer.clipAction(clip);
+        const action = this.mixer.clipAction(clip);
+        this.animations[clip.name] = action;
       });
       
       // Set initial animation
@@ -1360,7 +1371,7 @@ function animate() {
     const rotation = { y: character.rotation.y };
     
     // Get current animation state
-    const animationState = currentAnimation || 'idle';
+    const animationState = currentAnimationState || 'idle';
     
     // Send position update to server
     socket.emit('updatePosition', {
@@ -1666,6 +1677,12 @@ async function init() {
         
         // Connect to the WebSocket server
         initSocketConnection();
+        
+        // Enable controls after entering name
+        if (inputManager) {
+          inputManager.enablePointerLock();
+          instructions.style.display = 'flex';
+        }
       });
       
       // Show player name modal
@@ -1998,10 +2015,24 @@ function createPlayerNameLabel(name) {
   const nameLabel = new THREE.Sprite(material);
   nameLabel.scale.set(1, 0.25, 1);
   
-  // Add to scene
+  // Add to scene or character if available
   if (character) {
     nameLabel.position.set(0, 1.2, 0); // Position above character
     character.add(nameLabel);
+  } else {
+    // If character not loaded yet, add to the scene and position it
+    nameLabel.position.set(0, 2.2, 0);
+    scene.add(nameLabel);
+    
+    // Schedule a check to attach to character once it's loaded
+    const checkInterval = setInterval(() => {
+      if (character) {
+        scene.remove(nameLabel);
+        nameLabel.position.set(0, 1.2, 0);
+        character.add(nameLabel);
+        clearInterval(checkInterval);
+      }
+    }, 500);
   }
   
   return nameLabel;
