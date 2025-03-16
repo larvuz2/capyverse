@@ -22,13 +22,22 @@ function initializeSocketServer(httpServer) {
         animationState: 'idle'
       });
 
-      // Send the current state to the new player
-      socket.emit('gameState', {
-        playerId: socket.id,
-        players: getAllPlayers()
+      // Log all current players
+      console.log('Current players:');
+      getAllPlayers().forEach(p => {
+        console.log(`- ${p.id} (${p.name}): position=${JSON.stringify(p.position)}`);
       });
 
+      // Send the current state to the new player
+      const gameState = {
+        playerId: socket.id,
+        players: getAllPlayers()
+      };
+      console.log(`Sending gameState to new player ${socket.id}:`, gameState);
+      socket.emit('gameState', gameState);
+
       // Broadcast to all other players that a new player joined
+      console.log(`Broadcasting playerJoined event for ${player.name} (${socket.id})`);
       socket.broadcast.emit('playerJoined', player);
       
       console.log(`Player joined: ${player.name} (${socket.id})`);
@@ -36,6 +45,8 @@ function initializeSocketServer(httpServer) {
 
     // Handle player position updates
     socket.on('updatePosition', (data) => {
+      console.log(`Position update from ${socket.id}:`, data);
+      
       // Update player position, rotation and animation state
       const updatedPlayer = updatePlayerPosition(socket.id, {
         position: data.position,
@@ -45,7 +56,10 @@ function initializeSocketServer(httpServer) {
       
       if (updatedPlayer) {
         // Broadcast the update to all other players
+        console.log(`Broadcasting playerMoved for ${socket.id}:`, updatedPlayer);
         socket.broadcast.emit('playerMoved', updatedPlayer);
+      } else {
+        console.warn(`Failed to update position for player ${socket.id}`);
       }
     });
 

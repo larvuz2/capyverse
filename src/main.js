@@ -27,52 +27,100 @@ class RemotePlayer {
     this.currentAnimation = null;
     this.lastUpdate = Date.now();
     this.nameLabel = null;
+    this.debugObject = null;
+    console.log(`RemotePlayer constructor: ${id}, ${name}, position:`, this.position);
+    
+    // Create a simple debug object to make remote players immediately visible
+    this.createDebugObject();
+    
+    // Load the actual model
     this.loadModel();
+  }
+  
+  createDebugObject() {
+    // Create a simple colored cube as a debug visual
+    const geometry = new THREE.BoxGeometry(0.5, 1, 0.5);
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    this.debugObject = new THREE.Mesh(geometry, material);
+    
+    // Position it at the remote player's location
+    this.debugObject.position.set(
+      this.position.x,
+      this.position.y + 0.5, // Raise it slightly to be more visible
+      this.position.z
+    );
+    
+    console.log(`Creating debug object for ${this.id} at position:`, this.debugObject.position);
+    
+    // Add to scene immediately
+    scene.add(this.debugObject);
   }
 
   loadModel() {
+    console.log(`Starting model load for player ${this.id}`);
     // Use the same model as the local player
     const loader = new GLTFLoader();
-    loader.load('models/capybara.glb', (gltf) => {
-      this.model = gltf.scene;
-      this.model.scale.set(0.5, 0.5, 0.5);
-      
-      // Set initial position and rotation
-      if (this.position) {
-        this.model.position.set(this.position.x, this.position.y, this.position.z);
-      } else {
-        this.model.position.set(0, 1, 0);
-      }
-      
-      if (this.rotation) {
-        this.model.rotation.y = this.rotation.y;
-      }
-      
-      this.model.traverse((node) => {
-        if (node.isMesh) {
-          node.castShadow = true;
-          node.receiveShadow = true;
+    loader.load('models/capybara.glb', 
+      // Success callback
+      (gltf) => {
+        console.log(`Model loaded successfully for player ${this.id}`);
+        this.model = gltf.scene;
+        this.model.scale.set(0.5, 0.5, 0.5);
+        
+        // Set initial position and rotation
+        if (this.position) {
+          this.model.position.set(this.position.x, this.position.y, this.position.z);
+          console.log(`Set model position for ${this.id} to:`, this.position);
+        } else {
+          this.model.position.set(0, 1, 0);
+          console.log(`No position provided for ${this.id}, using default`);
         }
-      });
-      
-      // Create animation mixer
-      this.mixer = new THREE.AnimationMixer(this.model);
-      
-      // Store animations by name
-      gltf.animations.forEach((clip) => {
-        const action = this.mixer.clipAction(clip);
-        this.animations[clip.name] = action;
-      });
-      
-      // Set initial animation
-      this.playAnimation('idle');
-      
-      // Add to scene
-      scene.add(this.model);
-      
-      // Create name label
-      this.createNameLabel();
-    });
+        
+        if (this.rotation) {
+          this.model.rotation.y = this.rotation.y;
+        }
+        
+        this.model.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
+        
+        // Create animation mixer
+        this.mixer = new THREE.AnimationMixer(this.model);
+        
+        // Store animations by name
+        gltf.animations.forEach((clip) => {
+          const action = this.mixer.clipAction(clip);
+          this.animations[clip.name] = action;
+        });
+        
+        // Set initial animation
+        this.playAnimation('idle');
+        
+        // Add to scene
+        scene.add(this.model);
+        console.log(`Added model to scene for player ${this.id}`);
+        
+        // Remove the debug object once the model is loaded
+        if (this.debugObject) {
+          scene.remove(this.debugObject);
+          this.debugObject = null;
+        }
+        
+        // Create name label
+        this.createNameLabel();
+      },
+      // Progress callback
+      (xhr) => {
+        console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
+      },
+      // Error callback
+      (error) => {
+        console.error(`Error loading model for player ${this.id}:`, error);
+      }
+    );
   }
   
   createNameLabel() {
@@ -119,20 +167,37 @@ class RemotePlayer {
   }
   
   updatePosition(position, rotation, animationState) {
+    console.log(`RemotePlayer ${this.id} updatePosition called with:`, position);
+    
+    // Store the new data
     this.position = position;
     this.rotation = rotation;
     this.animationState = animationState;
     this.lastUpdate = Date.now();
     
+    // Update debug object if it exists
+    if (this.debugObject) {
+      this.debugObject.position.set(position.x, position.y + 0.5, position.z);
+      console.log(`Updated debug object position for ${this.id}:`, this.debugObject.position);
+    }
+    
     if (this.model) {
       // Apply position with interpolation
-      this.model.position.lerp(new THREE.Vector3(position.x, position.y, position.z), 0.3);
+      const targetPosition = new THREE.Vector3(position.x, position.y, position.z);
+      console.log(`Moving ${this.id} to:`, targetPosition);
+      this.model.position.lerp(targetPosition, 0.3);
       
       // Apply rotation
-      this.model.rotation.y = rotation.y;
+      if (rotation) {
+        this.model.rotation.y = rotation.y;
+      }
       
       // Play animation if it changed
-      this.playAnimation(animationState);
+      if (animationState) {
+        this.playAnimation(animationState);
+      }
+    } else {
+      console.warn(`RemotePlayer ${this.id} model not loaded yet, position update queued`);
     }
   }
   
@@ -1373,12 +1438,16 @@ function animate() {
     // Get current animation state
     const animationState = currentAnimationState || 'idle';
     
-    // Send position update to server
-    socket.emit('updatePosition', {
+    // Prepare update data
+    const updateData = {
       position: { x: position.x, y: position.y, z: position.z },
       rotation: rotation,
       animationState: animationState
-    });
+    };
+    
+    // Send position update to server
+    socket.emit('updatePosition', updateData);
+    console.log('Sending position update:', updateData);
     
     // Update last update time
     lastUpdateTime = elapsedTime;
@@ -2040,6 +2109,7 @@ function createPlayerNameLabel(name) {
 
 function initSocketConnection() {
   // Connect to Socket.io server
+  console.log('Attempting to connect to server at:', SERVER_URL);
   socket = io(SERVER_URL);
   
   // Handle connection
@@ -2048,6 +2118,7 @@ function initSocketConnection() {
     
     // Join game with player name
     socket.emit('join', { name: playerName });
+    console.log('Emitted join event with name:', playerName);
   });
   
   // Handle disconnection
@@ -2061,11 +2132,13 @@ function initSocketConnection() {
     
     // Store local player ID
     localPlayerId = state.playerId;
+    console.log('Local player ID set to:', localPlayerId);
     
     // Create remote players
     state.players.forEach(player => {
       // Don't create a player for ourselves
       if (player.id !== localPlayerId) {
+        console.log('Adding remote player from gameState:', player);
         addRemotePlayer(player);
       }
     });
@@ -2073,43 +2146,87 @@ function initSocketConnection() {
   
   // Handle new player joined
   socket.on('playerJoined', (player) => {
-    console.log('Player joined:', player);
+    console.log('Player joined event received:', player);
     addRemotePlayer(player);
   });
   
   // Handle player left
   socket.on('playerLeft', (data) => {
-    console.log('Player left:', data);
+    console.log('Player left event received:', data);
     removeRemotePlayer(data.id);
   });
   
   // Handle player movement
   socket.on('playerMoved', (player) => {
+    console.log('Player moved event received:', player);
     updateRemotePlayer(player);
   });
 }
 
 function addRemotePlayer(playerData) {
-  if (!remotePlayers.has(playerData.id)) {
-    console.log(`Adding remote player: ${playerData.name}`);
-    const remotePlayer = new RemotePlayer(
-      playerData.id,
-      playerData.name,
-      playerData.position,
-      playerData.rotation
-    );
-    remotePlayers.set(playerData.id, remotePlayer);
+  console.log('addRemotePlayer called with:', playerData);
+  
+  if (!playerData || !playerData.id) {
+    console.error('Invalid player data received:', playerData);
+    return;
   }
+  
+  if (remotePlayers.has(playerData.id)) {
+    console.log(`Player ${playerData.id} already exists, updating instead`);
+    updateRemotePlayer(playerData);
+    return;
+  }
+  
+  console.log(`Creating new RemotePlayer for ${playerData.id} (${playerData.name})`);
+  
+  // Ensure the position and rotation are valid
+  const position = playerData.position || { x: 0, y: 1, z: 0 };
+  const rotation = playerData.rotation || { y: 0 };
+  
+  const remotePlayer = new RemotePlayer(
+    playerData.id,
+    playerData.name,
+    position,
+    rotation
+  );
+  
+  // Store in the remotePlayers map
+  remotePlayers.set(playerData.id, remotePlayer);
+  console.log(`Total remote players: ${remotePlayers.size}`);
+  
+  // Log all current remote players
+  console.log('Current remote players:');
+  remotePlayers.forEach((player, id) => {
+    console.log(`- ${id} (${player.name})`);
+  });
 }
 
 function updateRemotePlayer(playerData) {
+  console.log(`updateRemotePlayer called for ${playerData.id}`);
+  
+  if (!playerData || !playerData.id) {
+    console.error('Invalid player data received:', playerData);
+    return;
+  }
+  
   const remotePlayer = remotePlayers.get(playerData.id);
   if (remotePlayer) {
+    console.log(`Updating player ${playerData.id} (${remotePlayer.name}) position:`, playerData.position);
+    
+    // Validate position data
+    if (!playerData.position) {
+      console.warn(`No position data for player ${playerData.id}`);
+      return;
+    }
+    
     remotePlayer.updatePosition(
       playerData.position,
       playerData.rotation,
       playerData.animationState
     );
+  } else {
+    console.warn(`Received update for unknown player ${playerData.id}, adding them now`);
+    addRemotePlayer(playerData);
   }
 }
 
