@@ -1,13 +1,9 @@
 [build]
-  command = "npm run netlify-build"
+  command = "npm install && npm run build"
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "16"
-
-# Ignore the server directory during build
-[build.processing]
-  skip_processing = true
+  NODE_VERSION = "18"
 
 # Redirect all requests to index.html for SPA behavior
 [[redirects]]

@@ -11,7 +11,17 @@ export default defineConfig({
   build: {
     target: 'esnext', // To allow using top-level await, which is needed by RAPIER.js
     outDir: 'dist',
-    assetsDir: 'assets'
+    assetsDir: 'assets',
+    // Ensure we generate a proper SSR manifest for Netlify
+    sourcemap: true,
+    // Make the build more robust for deployment
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['three', '@dimforge/rapier3d']
+        }
+      }
+    }
   },
   resolve: {
     extensions: ['.js', '.json'],
@@ -26,5 +36,10 @@ export default defineConfig({
   },
   server: {
     host: true,
+  },
+  // Add explicit Netlify support
+  preview: {
+    port: 8080,
+    host: true
   }
 });
