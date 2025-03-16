@@ -379,8 +379,8 @@ export default class NatureEnvironment {
       
       // Create pond
       const pond = this.createPond(radius, depth, waterColor);
-      // Position at ground level for visibility
-      pond.position.set(centerX, 0.05, centerZ); // Slightly above ground
+      // Position almost at ground level for visibility
+      pond.position.set(centerX, 0.01, centerZ); // Barely above ground
       
       // Store pond data for animation
       pond.userData.originalPosition = pond.position.clone();
@@ -401,15 +401,15 @@ export default class NatureEnvironment {
   createPond(radius, depth, waterColor) {
     const group = new THREE.Group();
     
-    // Create pond base/bed with darker color
-    const bedGeometry = new THREE.CylinderGeometry(radius, radius * 0.95, depth * 0.4, 32);
+    // Create pond base/bed with darker color - make it thinner and lower
+    const bedGeometry = new THREE.CylinderGeometry(radius, radius * 0.95, depth * 0.2, 32);
     const bedMaterial = new THREE.MeshStandardMaterial({
       color: 0x1E3B4D, // Darker blue for pond bed
       roughness: 0.9,
       metalness: 0.1,
     });
     const bed = new THREE.Mesh(bedGeometry, bedMaterial);
-    bed.position.y = -depth * 0.2; // Positioned slightly below ground
+    bed.position.y = -depth * 0.1; // Higher position to be just below surface
     bed.receiveShadow = true;
     group.add(bed);
     
@@ -428,7 +428,7 @@ export default class NatureEnvironment {
     
     const water = new THREE.Mesh(waterGeometry, waterMaterial);
     water.rotation.x = -Math.PI / 2; // Make horizontal
-    water.position.y = 0.1; // Slightly above ground for visibility
+    water.position.y = 0.02; // Very close to ground level
     water.receiveShadow = true;
     group.add(water);
     
@@ -443,7 +443,7 @@ export default class NatureEnvironment {
     });
     const ripple = new THREE.Mesh(rippleGeometry, rippleMaterial);
     ripple.rotation.x = -Math.PI / 2; // Make horizontal
-    ripple.position.y = 0.11; // Slightly above water
+    ripple.position.y = 0.03; // Just above water
     group.add(ripple);
     
     // Store ripple reference for animation
