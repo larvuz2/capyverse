@@ -16,12 +16,14 @@
     #info {
       position: absolute;
       top: 5px;
-      left: 10px;
+      left: 50%;
+      transform: translateX(-50%);
       color: white;
       background-color: transparent;
       padding: 10px;
       border-radius: 5px;
       font-family: Arial, sans-serif;
+      text-align: center;
     }
     .logo-img {
       width: 300px;
@@ -34,28 +36,65 @@
       }
       #info {
         top: 2px;
+        left: 50%;
+        transform: translateX(-50%);
       }
+    }
+    /* Debug info */
+    #debug-info {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background-color: rgba(0,0,0,0.7);
+      color: white;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      max-width: 90%;
+      z-index: 9999;
     }
   </style>
   <link rel="stylesheet" href="/src/styles/mobile.css">
-  <!-- Add Eruda for mobile debugging only in development -->
+  <!-- Always enable Eruda for debugging this issue -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
   <script>
-    // Only enable Eruda in development or when debug=true in URL
-    const isDevMode = window.location.hostname === 'localhost' || 
-                      window.location.hostname === '127.0.0.1' ||
-                      window.location.search.includes('debug=true');
-    if (isDevMode) {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/eruda';
-      script.onload = function () { eruda.init(); }
-      document.head.appendChild(script);
-    }
+    // Global error handler
+    window.addEventListener('error', function(event) {
+      console.error('Global error:', event.error, event);
+      const debugInfo = document.getElementById('debug-info');
+      if (debugInfo) {
+        debugInfo.innerHTML += '<div>ERROR: ' + event.message + '</div>';
+      }
+    });
+
+    // Promise rejection handler
+    window.addEventListener('unhandledrejection', function(event) {
+      console.error('Unhandled rejection:', event.reason);
+      const debugInfo = document.getElementById('debug-info');
+      if (debugInfo) {
+        debugInfo.innerHTML += '<div>PROMISE ERROR: ' + event.reason + '</div>';
+      }
+    });
+
+    // Add loading status tracking
+    window.logStatus = function(message) {
+      console.log('STATUS:', message);
+      const debugInfo = document.getElementById('debug-info');
+      if (debugInfo) {
+        debugInfo.innerHTML += '<div>' + message + '</div>';
+      }
+    };
   </script>
 </head>
 <body>
   <div id="scene-container"></div>
   <div id="info">
     <img class="logo-img" src="https://vbcltontvlbnaawiqegc.supabase.co/storage/v1/object/public/capywebsite//logocapyvibes.png" alt="Capyverse Logo">
+  </div>
+  <div id="debug-info">
+    LOADING STATUS:<br>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>
