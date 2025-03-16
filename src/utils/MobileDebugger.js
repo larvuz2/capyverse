@@ -322,9 +322,10 @@ function updateDebugPanel() {
 export function logToDebugPanel(message, type = 'log') {
   capturedLogs.push({
     type,
-    message: formatArg(message),
+    message: String(message),
     timestamp: new Date().toISOString()
   });
+  
   updateDebugPanel();
 }
 
