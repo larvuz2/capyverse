@@ -1741,6 +1741,9 @@ function cleanupCameraDebug() {
 }
 
 function handleCharacterMovement(deltaTime) {
+  // CRITICAL FUNCTION: This handles the core character movement
+  // If this doesn't work, the game is unplayable
+  
   if (!characterBody || !character) return;
   
   // Skip if no physics system
@@ -1860,11 +1863,6 @@ function animate() {
   const delta = clock.getDelta();
   const elapsedTime = clock.getElapsedTime() * 1000; // Convert to milliseconds
   
-  // Check for model recovery every 30 seconds (only if there are issues)
-  if (ModelCache.getPlayersWithLoadingIssues().length > 0 && Math.floor(elapsedTime / 30000) !== Math.floor((elapsedTime - delta * 1000) / 30000)) {
-    attemptModelRecoveryForAllPlayers();
-  }
-  
   // Update physics
   if (physicsInitialized && world) {
     world.step();
@@ -1910,6 +1908,7 @@ function animate() {
     }
   }
   
+  // PRIORITY: Character control is the most important aspect - update first
   // Update character position and movement
   handleCharacterMovement(delta);
   
@@ -1984,35 +1983,37 @@ function animate() {
     }
   }
   
-  // Send position updates to server at regular intervals
-  if (isMultiplayerEnabled && socket && socket.connected && 
-      character && characterBody && elapsedTime - lastUpdateTime > UPDATE_INTERVAL) {
+  // MULTIPLAYER: Handle multiplayer functionality only if properly connected
+  // Only attempt multiplayer updates if the connection is actually ready
+  if (isMultiplayerEnabled && socket && socket.connected && character && characterBody) {
+    // Send position updates to server at regular intervals
+    if (elapsedTime - lastUpdateTime > UPDATE_INTERVAL) {
+      // Get character position and rotation
+      const position = characterBody.translation();
+      const rotation = { y: character.rotation.y };
+      
+      // Prepare update data
+      const updateData = {
+        position: { x: position.x, y: position.y, z: position.z },
+        rotation: rotation,
+        animationState: currentAnimationState || 'idle'
+      };
+      
+      // Send position update to server - wrapped in try/catch to prevent crashing
+      try {
+        socket.emit('updatePosition', updateData);
+      } catch (error) {
+        console.error('Error sending position update:', error);
+      }
+      
+      // Update last update time
+      lastUpdateTime = elapsedTime;
+    }
     
-    // Get character position and rotation
-    const position = characterBody.translation();
-    const rotation = { y: character.rotation.y };
-    
-    // Get current animation state
-    const animationState = currentAnimationState || 'idle';
-    
-    // Prepare update data
-    const updateData = {
-      position: { x: position.x, y: position.y, z: position.z },
-      rotation: rotation,
-      animationState: animationState
-    };
-    
-    // Send position update to server
-    socket.emit('updatePosition', updateData);
-    console.log('Sending position update:', updateData);
-    
-    // Update last update time
-    lastUpdateTime = elapsedTime;
-  }
-  
-  // Update remote players with interpolation
-  for (const remotePlayer of remotePlayers.values()) {
-    remotePlayer.update(delta);
+    // Update remote players with interpolation
+    for (const remotePlayer of remotePlayers.values()) {
+      remotePlayer.update(delta);
+    }
   }
   
   // Update nature environment if it exists
@@ -2306,10 +2307,15 @@ async function init() {
         // Add name label to player
         createPlayerNameLabel(playerName);
         
-        // Connect to the WebSocket server
-        initSocketConnection();
+        // Initialize multiplayer if needed, but don't let it block the main thread
+        if (isMultiplayerEnabled) {
+          // Use setTimeout to ensure it doesn't block character movement
+          setTimeout(() => {
+            initSocketConnection();
+          }, 100);
+        }
         
-        // Enable controls after entering name
+        // Enable controls immediately so character movement works
         if (inputManager) {
           inputManager.enablePointerLock();
           instructions.style.display = 'flex';
@@ -2323,12 +2329,7 @@ async function init() {
     // Start the animation loop
     animate();
     
-    // Initialize multiplayer connections
-    console.log('Initializing multiplayer connections');
-    await initSocketConnection(); // Now awaiting this function
-    console.log('Multiplayer connections initialized');
-    
-    // Additional initialization code here
+    // No need to initialize multiplayer connections here as it's done in the player name modal callback
     
     console.log("Initialization completed successfully");
   } catch (error) {
@@ -2677,11 +2678,10 @@ function createPlayerNameLabel(name) {
 }
 
 // Initialize socket connection and handle events
-async function initSocketConnection() {
+function initSocketConnection() {
   console.log(`Connecting to server at ${SERVER_URL}`);
   
-  // Make sure models are preloaded before we start handling multiplayer
-  await ModelCache.preloadModels();
+  // No blocking calls here to ensure character control remains responsive
   
   socket = io(SERVER_URL);
   
