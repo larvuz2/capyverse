@@ -990,7 +990,7 @@ function handleCharacterMovement(deltaTime) {
     
     // Apply direction and intensity with platform-specific adjustments
     moveDirection.x = joystickPosition.x;
-    moveDirection.z = -joystickPosition.y; // Invert Y for forward/backward
+    moveDirection.z = joystickPosition.y; // Forward/backward
     
     // Apply non-linear acceleration curve for smoother control
     // This makes small movements more precise while still allowing fast movement
