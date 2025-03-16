@@ -4,7 +4,7 @@
 const getServerUrl = () => {
   // When running in production (Render.com), use the deployed URL
   if (import.meta.env.PROD) {
-    // Replace with your actual Render.com URL when deployed
+    // Use the actual Render.com URL
     return 'https://capyverse.onrender.com';
   }
   
