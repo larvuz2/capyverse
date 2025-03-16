@@ -1,0 +1,16 @@
+[build]
+  command = "npm run netlify-build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "16"
+
+# Ignore the server directory during build
+[build.processing]
+  skip_processing = true
+
+# Redirect all requests to index.html for SPA behavior
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200 
