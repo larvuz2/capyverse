@@ -120,6 +120,15 @@ class InputManager {
   }
   
   /**
+   * Enable pointer lock for external calls
+   */
+  enablePointerLock() {
+    // Request pointer lock
+    this.requestPointerLock();
+    console.log('Pointer lock requested from external call');
+  }
+  
+  /**
    * Handle pointer lock change events
    */
   onPointerLockChange() {

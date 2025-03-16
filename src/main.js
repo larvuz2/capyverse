@@ -1317,290 +1317,11 @@ const UPDATE_INTERVAL = 1000 / 15; // 15 updates per second
 let lastUpdateTime = 0;
 const isMultiplayerEnabled = true;
 
-// Initialize RAPIER before using it
-async function initRapier() {
-  try {
-    if (isMobileDevice()) logToDebugPanel('Loading RAPIER WASM module', 'info');
-    rapier = await RAPIER;
-    if (isMobileDevice()) logToDebugPanel('RAPIER WASM loaded successfully', 'info');
-    console.log('RAPIER physics initialized successfully');
-    return rapier;
-  } catch (error) {
-    console.error('Error initializing RAPIER:', error);
-    if (isMobileDevice()) logToDebugPanel(`Error initializing RAPIER: ${error.message}`, 'error');
-    return false;
-  }
-}
-
-async function initPhysics() {
-  try {
-    if (!rapier) {
-      console.error('RAPIER not initialized, waiting...');
-      await initRapier();
-    }
-    
-    // Create a physics world with gravity from config
-    world = new rapier.World({ x: 0.0, y: config.physics.gravity, z: 0.0 });
-    
-    // Remove the setContactPairHandler that's causing errors
-    // Instead, we'll check for collisions manually in the animation loop
-    
-    // Ground
-    const groundColliderDesc = rapier.ColliderDesc.cuboid(100.0, 0.1, 100.0)
-      .setFriction(config.physics.friction)
-      .setRestitution(config.physics.restitution);
-    world.createCollider(groundColliderDesc);
-    
-    physicsInitialized = true;
-    console.log("Physics initialized successfully");
-  } catch (error) {
-    console.error("Error initializing physics:", error);
-  }
-}
-
-// Character and animations
-
-// Temporary capybara box for testing
-function createTemporaryCapybara() {
-  const geometry = new THREE.BoxGeometry(1, 1, 2);
-  const material = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown color
-  character = new THREE.Mesh(geometry, material);
-  character.castShadow = true;
-  character.position.set(0, 1, 0);
-  
-  // Set initial rotation to face away from camera (180 degrees)
-  character.rotation.y = Math.PI;
-  
-  scene.add(character);
-  
-  // Create physics body for character
-  const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
-    .setTranslation(0, 1, 0);
-  characterBody = world.createRigidBody(rigidBodyDesc);
-  
-  const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
-  world.createCollider(characterColliderDesc, characterBody);
-}
-
-// Load character and animations
-async function loadModels() {
-  try {
-    // Use the preloaded capybara model for local player
-    console.log('Getting preloaded capybara model for local player');
-    const characterGltf = ModelCache.getCapybaraModelClone();
-    
-    if (!characterGltf) {
-      console.warn('Preloaded model not available, loading directly');
-      // Fall back to direct loading if preloaded model is not available
-      const loadedModel = await ModelCache.getModelWithFallbacks(ModelCache.CAPYBARA_MODEL_PATHS);
-      character = loadedModel.scene;
-    } else {
-      character = characterGltf.scene;
-    }
-    
-    character.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
-    character.castShadow = true;
-    character.position.set(0, 1, 0);
-    
-    // Set initial rotation to face away from camera (180 degrees)
-    character.rotation.y = Math.PI;
-    
-    scene.add(character);
-    
-    // Create physics body for character
-    const rigidBodyDesc = rapier.RigidBodyDesc.dynamic()
-      .setTranslation(0, 1, 0);
-    characterBody = world.createRigidBody(rigidBodyDesc);
-    
-    const characterColliderDesc = rapier.ColliderDesc.capsule(0.5, 0.3);
-    const characterCollider = world.createCollider(characterColliderDesc, characterBody);
-    
-    // Store character collider ID for collision detection
-    characterColliderId = characterCollider.handle;
-    
-    // Load animations
-    mixer = new THREE.AnimationMixer(character);
-    
-    // Load required animations using ModelCache
-    const idleModel = await ModelCache.getModel('./animations/idle.glb');
-    const walkModel = await ModelCache.getModel('./animations/walk.glb');
-    
-    idleAction = mixer.clipAction(idleModel.animations[0]);
-    walkAction = mixer.clipAction(walkModel.animations[0]);
-    
-    // Try to load jump animation, but continue if it fails
-    try {
-      const jumpModel = await loader.loadAsync('./animations/jump.glb');
-      jumpAction = mixer.clipAction(jumpModel.animations[0]);
-      console.log("Jump animation loaded successfully");
-    } catch (jumpError) {
-      console.warn("Jump animation not found, using walk animation for jump state:", jumpError);
-      // Use walk animation as fallback for jump
-      jumpAction = walkAction;
-    }
-    
-    // Start with idle animation
-    activeAction = idleAction;
-    idleAction.play();
-    
-    // Load the orange model
-    await loadOrangeModel();
-    
-    console.log("Models loaded successfully");
-  } catch (error) {
-    console.error("Error loading models:", error);
-    if (isMobileDevice()) logToDebugPanel(`Error loading models: ${error.message}`, 'error');
-    // Fallback to temporary capybara if loading fails
-    createTemporaryCapybara();
-  }
-}
-
-// Load orange model
-async function loadOrangeModel() {
-  try {
-    // Create multiple oranges
-    for (let i = 0; i < orangeCount; i++) {
-      // Load the orange model
-      const orangeModel = await loader.loadAsync('./assets/orange.glb');
-      const orangeInstance = orangeModel.scene.clone();
-      
-      // Generate random position around the scene
-      const posX = Math.random() * 20 - 10; // Random position between -10 and 10
-      const posY = config.oranges.heightOffset + Math.random() * 2; // Use height offset from config
-      const posZ = Math.random() * 20 - 10; // Random position between -10 and 10
-      
-      // Position and scale the orange - use the config value for size
-      orangeInstance.scale.set(
-        config.oranges.size,
-        config.oranges.size,
-        config.oranges.size
-      );
-      orangeInstance.castShadow = true;
-      orangeInstance.position.set(posX, posY, posZ);
-      
-      // Add the orange to the scene
-      scene.add(orangeInstance);
-      oranges.push(orangeInstance);
-      
-      // Create physics body for the orange
-      const orangeRigidBodyDesc = rapier.RigidBodyDesc.dynamic()
-        .setTranslation(posX, posY, posZ) // Same position as the visual model
-        .setLinearDamping(0.5) // Add some damping to make it feel more realistic
-        .setAngularDamping(0.5); // Add angular damping for rotation
-      
-      const orangeBody = world.createRigidBody(orangeRigidBodyDesc);
-      orangeBodies.push(orangeBody);
-      
-      // Create a spherical collider for the orange
-      const orangeRadius = 0.3; // Adjust based on your orange model size
-      const orangeColliderDesc = rapier.ColliderDesc.ball(orangeRadius)
-        .setFriction(0.7) // Higher friction to roll naturally
-        .setRestitution(0.4) // Some bounciness
-        .setDensity(2.0); // Make it feel like an orange (slightly dense)
-      
-      const orangeCollider = world.createCollider(orangeColliderDesc, orangeBody);
-      
-      // Store orange collider ID for collision detection
-      orangeColliderIds.push(orangeCollider.handle);
-    }
-    
-    console.log(`${orangeCount} orange models loaded successfully with physics`);
-    
-  } catch (error) {
-    console.error("Error loading orange models:", error);
-  }
-}
-
-// Animation transition function
-function fadeToAction(newAction, duration = 0.2) {
-  // Prevent switching to the same animation
-  if (activeAction === newAction) return;
-  
-  // Log animation transition for debugging
-  const animationMap = {
-    [idleAction]: 'Idle',
-    [walkAction]: 'Walk',
-    [jumpAction]: 'Jump'
-  };
-  
-  const fromAnim = activeAction ? animationMap[activeAction] || 'Unknown' : 'None';
-  const toAnim = animationMap[newAction] || 'Unknown';
-  
-  console.log(`Animation transition: ${fromAnim} -> ${toAnim}`);
-  
-  // Configure new action to fade in
-  newAction.reset();
-  newAction.setEffectiveTimeScale(1);
-  newAction.setEffectiveWeight(1);
-  
-  // Crossfade from current active action to new action
-  if (activeAction) {
-    // Setup crossfade
-    newAction.crossFadeFrom(activeAction, duration, true);
-  }
-  
-  // Play new action and update the active action reference
-  newAction.play();
-  activeAction = newAction;
-}
-
-// Ground plane
-function createGround() {
-  // Instead of creating a simple ground plane, initialize our nature environment
-  natureEnvironment = new NatureEnvironment(scene);
-  natureEnvironment.init();
-  
-  // We don't need the grid helper with our rich environment
-  // const gridHelper = new THREE.GridHelper(200, 50);
-  // scene.add(gridHelper);
-  
-  // Create a physics body for the ground
-  // We'll create a flat physics ground that matches roughly with our visual terrain
-  // For simplicity, we're using a flat collider even though visual terrain has hills
-  const groundBodyDesc = RAPIER.RigidBodyDesc.fixed();
-  const groundBody = world.createRigidBody(groundBodyDesc);
-  
-  const groundColliderDesc = RAPIER.ColliderDesc.cuboid(100, 0.1, 100);
-  groundColliderDesc.setFriction(config.physics.friction);
-  groundColliderDesc.setRestitution(config.physics.restitution);
-  world.createCollider(groundColliderDesc, groundBody);
-}
-
-// Input handling
-const keys = { w: false, a: false, s: false, d: false, space: false };
-document.addEventListener('keydown', (e) => {
-  switch(e.key.toLowerCase()) {
-    case 'w': keys.w = true; break;
-    case 'a': keys.a = true; break;
-    case 's': keys.s = true; break;
-    case 'd': keys.d = true; break;
-    case ' ': keys.space = true; break;
-    case 'r': 
-      // Reset camera position when R key is pressed
-      if (thirdPersonCamera) {
-        console.log("Camera position manually reset");
-        thirdPersonCamera.reset();
-      }
-      break;
-    case 't':
-      toggleCameraDebugging();
-      break;
-  }
-});
-document.addEventListener('keyup', (e) => {
-  switch(e.key.toLowerCase()) {
-    case 'w': keys.w = false; break;
-    case 'a': keys.a = false; break;
-    case 's': keys.s = false; break;
-    case 'd': keys.d = false; break;
-    case ' ': keys.space = false; break;
-  }
-});
-
-// Character controller
-const moveSpeed = 5;
-const jumpForce = 10;
+// Global variables needed for movement
 let velocity = new THREE.Vector3();
+// Default forward direction - set if not already defined
+if (typeof lastDirection === 'undefined') {
+  let lastDirection = new THREE.Vector3(0, 0, -1); 
 let lastDirection = new THREE.Vector3(0, 0, -1); // Default forward direction
 
 // Camera controllers
@@ -1741,9 +1462,7 @@ function cleanupCameraDebug() {
 }
 
 function handleCharacterMovement(deltaTime) {
-  // CRITICAL FUNCTION: This handles the core character movement
-  // If this doesn't work, the game is unplayable
-  
+  console.log('handleCharacterMovement called, keys:', keys, 'characterBody:', characterBody, 'character:', character, 'physicsInitialized:', physicsInitialized);
   if (!characterBody || !character) return;
   
   // Skip if no physics system
@@ -1793,6 +1512,8 @@ function handleCharacterMovement(deltaTime) {
     if (keys.d) moveDirection.x = 1;
   }
   
+  console.log('moveDirection after key input:', moveDirection);
+  
   // Normalize the direction vector to prevent diagonal movement from being faster
   if (moveDirection.length() > 0) {
     moveDirection.normalize();
@@ -1814,6 +1535,8 @@ function handleCharacterMovement(deltaTime) {
     lastDirection.copy(moveDirection);
   }
   
+  console.log('moveDirection after camera transform:', moveDirection);
+  
   // Apply the configured movement speed
   moveDirection.multiplyScalar(config.character.moveSpeed);
   
@@ -1826,11 +1549,17 @@ function handleCharacterMovement(deltaTime) {
     moveDirection.y = currentVel.y;
   }
   
+  console.log('Final moveDirection before applying to physics:', moveDirection);
+  console.log('config.character.moveSpeed:', config.character.moveSpeed);
+  
   // Update physics body velocity
   characterBody.setLinvel({ x: moveDirection.x, y: moveDirection.y, z: moveDirection.z }, true);
   
   // Get the updated position from physics and apply to character mesh
   const position = characterBody.translation();
+  console.log('Character position after physics update:', position);
+  
+  // Set the character position based on physics body
   character.position.set(
     position.x, 
     position.y - 0.5 + config.character.heightOffset, // Apply height offset here
@@ -2066,6 +1795,8 @@ function updateOrangePosition() {
 
 // Initialize and start
 async function init() {
+  console.log('Initializing application...');
+  
   try {
     // Initialize mobile debugger for mobile devices
     initMobileDebugger();
@@ -2138,7 +1869,11 @@ async function init() {
     // Initialize Input Manager for camera controls
     // Only initialize on desktop or when we need mouse movement
     inputManager = new InputManager(renderer.domElement);
-    inputManager.sensitivity = config.camera.rotationSpeed;
+    console.log('Input manager initialized:', inputManager);
+    
+    // Enable pointer lock when canvas is clicked
+    inputManager.enablePointerLock(renderer.domElement);
+    console.log('Pointer lock enabled for canvas');
     
     // Initialize the third-person camera with config values
     thirdPersonCamera = new ThirdPersonCamera(camera, character, {
