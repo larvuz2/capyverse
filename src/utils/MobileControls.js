@@ -149,12 +149,15 @@ class MobileJoystick {
     if (!this.base) return;
     
     if (this.orientation === 'portrait') {
+      // Position in the lower right corner for portrait
       this.base.style.bottom = '80px';
-      this.base.style.left = '80px';
+      this.base.style.left = 'auto';
+      this.base.style.right = '80px';
     } else {
-      // Landscape orientation - position further from the edge
+      // Landscape orientation - position in the lower right corner
       this.base.style.bottom = '30px';
-      this.base.style.left = '80px';
+      this.base.style.left = 'auto';
+      this.base.style.right = '80px';
     }
   }
   

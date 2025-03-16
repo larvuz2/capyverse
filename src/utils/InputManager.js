@@ -3,6 +3,8 @@
  * Handles mouse input for the third-person camera with focus on reliability
  */
 
+import { isMobileDevice } from './DeviceDetector.js';
+
 class InputManager {
   constructor(domElement) {
     // Store reference to the DOM element
@@ -19,18 +21,23 @@ class InputManager {
     this._sensitivity = 0.003; // Default sensitivity (matched to ThirdPersonCamera expectations)
     this.invertY = false;     // Option to invert Y axis
     
-    // Status for user feedback
-    this.lockStatus = document.createElement('div');
-    this.lockStatus.style.position = 'absolute';
-    this.lockStatus.style.bottom = '10px';
-    this.lockStatus.style.width = '100%';
-    this.lockStatus.style.textAlign = 'center';
-    this.lockStatus.style.color = 'white';
-    this.lockStatus.style.fontFamily = 'Arial, sans-serif';
-    this.lockStatus.style.padding = '5px';
-    this.lockStatus.style.pointerEvents = 'none'; // Don't interfere with clicks
-    this.lockStatus.textContent = 'Click to control camera';
-    document.body.appendChild(this.lockStatus);
+    // Check if we're on a mobile device
+    this.isMobile = isMobileDevice();
+    
+    // Status for user feedback - only on desktop
+    if (!this.isMobile) {
+      this.lockStatus = document.createElement('div');
+      this.lockStatus.style.position = 'absolute';
+      this.lockStatus.style.bottom = '10px';
+      this.lockStatus.style.width = '100%';
+      this.lockStatus.style.textAlign = 'center';
+      this.lockStatus.style.color = 'white';
+      this.lockStatus.style.fontFamily = 'Arial, sans-serif';
+      this.lockStatus.style.padding = '5px';
+      this.lockStatus.style.pointerEvents = 'none'; // Don't interfere with clicks
+      this.lockStatus.textContent = 'Click to control camera';
+      document.body.appendChild(this.lockStatus);
+    }
     
     // Bind methods to this instance
     this.onMouseMove = this.onMouseMove.bind(this);
@@ -118,18 +125,20 @@ class InputManager {
   onPointerLockChange() {
     this.isPointerLocked = document.pointerLockElement === this.domElement;
     
-    // Update status message
-    this.lockStatus.textContent = this.isPointerLocked ? 
-      'Camera controls active (ESC to exit)' : 
-      'Click to control camera';
-    
-    // Hide status after a short delay when locked
-    if (this.isPointerLocked) {
-      setTimeout(() => {
-        this.lockStatus.style.opacity = '0';
-      }, 2000);
-    } else {
-      this.lockStatus.style.opacity = '1';
+    // Update status message - only if lockStatus exists (non-mobile)
+    if (this.lockStatus) {
+      this.lockStatus.textContent = this.isPointerLocked ? 
+        'Camera controls active (ESC to exit)' : 
+        'Click to control camera';
+      
+      // Hide status after a short delay when locked
+      if (this.isPointerLocked) {
+        setTimeout(() => {
+          this.lockStatus.style.opacity = '0';
+        }, 2000);
+      } else {
+        this.lockStatus.style.opacity = '1';
+      }
     }
     
     console.log(`Pointer lock ${this.isPointerLocked ? 'acquired' : 'released'}`);
@@ -140,7 +149,9 @@ class InputManager {
    */
   onPointerLockError() {
     console.error('Pointer lock error');
-    this.lockStatus.textContent = 'Camera control error - try again';
+    if (this.lockStatus) {
+      this.lockStatus.textContent = 'Camera control error - try again';
+    }
   }
   
   /**
@@ -170,7 +181,7 @@ class InputManager {
     document.removeEventListener('pointerlockerror', this.onPointerLockError, false);
     this.domElement.removeEventListener('click', this.onClick, false);
     
-    // Remove status element
+    // Remove status element if it exists
     if (this.lockStatus && this.lockStatus.parentNode) {
       this.lockStatus.parentNode.removeChild(this.lockStatus);
     }
