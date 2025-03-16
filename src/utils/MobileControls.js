@@ -80,8 +80,8 @@ class MobileJoystick {
   }
   
   /**
-   * Initialize the joystick and create DOM elements
-   * @param {boolean} forceEnable - Force enable even on desktop (for testing)
+   * Initialize the joystick
+   * @param {boolean} forceEnable - Force enable even on non-mobile (for testing)
    * @returns {boolean} True if initialized successfully
    */
   init(forceEnable = false) {
@@ -90,6 +90,8 @@ class MobileJoystick {
       console.log('MobileJoystick: Not initializing on non-mobile device');
       return false;
     }
+    
+    console.log('MobileJoystick: DEBUG - Starting initialization');
     
     // Create container element
     this.container = document.createElement('div');
@@ -138,7 +140,7 @@ class MobileJoystick {
     }
     
     // Success
-    console.log('MobileJoystick: Initialized successfully');
+    console.log('MobileJoystick: DEBUG - Initialization completed successfully');
     return true;
   }
   
@@ -148,16 +150,20 @@ class MobileJoystick {
   adjustPositionForOrientation() {
     if (!this.base) return;
     
+    console.log('MobileJoystick: DEBUG - Adjusting position for orientation:', this.orientation);
+    
     if (this.orientation === 'portrait') {
       // Position in the lower right corner for portrait
-      this.base.style.bottom = '80px';
-      this.base.style.left = 'auto';
-      this.base.style.right = '80px';
-    } else {
-      // Landscape orientation - position in the lower right corner
       this.base.style.bottom = '30px';
       this.base.style.left = 'auto';
-      this.base.style.right = '80px';
+      this.base.style.right = '30px';
+      console.log('MobileJoystick: DEBUG - Positioned in lower right (portrait)');
+    } else {
+      // Landscape orientation - position in the lower right corner
+      this.base.style.bottom = '20px';
+      this.base.style.left = 'auto';
+      this.base.style.right = '20px';
+      console.log('MobileJoystick: DEBUG - Positioned in lower right (landscape)');
     }
   }
   
@@ -171,9 +177,10 @@ class MobileJoystick {
       return;
     }
     
+    console.log('MobileJoystick: DEBUG - Appending to DOM');
     parent.appendChild(this.container);
     this.setupEventListeners();
-    console.log('MobileJoystick: Appended to DOM');
+    console.log('MobileJoystick: DEBUG - Appended to DOM successfully');
   }
   
   /**
@@ -193,13 +200,14 @@ class MobileJoystick {
   show() {
     if (!this.container) return;
     
+    console.log('MobileJoystick: DEBUG - Making joystick visible');
     this.container.style.display = 'block';
     this.visible = true;
     
     // Clear auto-hide timer if exists
     this.clearAutoHideTimer();
     
-    console.log('MobileJoystick: Now visible');
+    console.log('MobileJoystick: DEBUG - Joystick now visible');
   }
   
   /**

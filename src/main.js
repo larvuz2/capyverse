@@ -1349,10 +1349,10 @@ async function init() {
       mobileJoystick = new MobileJoystick({
         baseSize: 150,             // Slightly larger for easier use
         knobSize: 75,              // Maintain proportion
-        baseOpacity: 0.5,          // Set to 50% opacity
-        knobOpacity: 0.5,          // Set to 50% opacity
-        activeBaseOpacity: 0.5,    // Set to 50% opacity
-        activeKnobOpacity: 0.5,    // Set to 50% opacity
+        baseOpacity: 0.3,          // Set to 30% opacity (more transparent)
+        knobOpacity: 0.3,          // Set to 30% opacity (more transparent)
+        activeBaseOpacity: 0.4,    // Set to 40% opacity when active
+        activeKnobOpacity: 0.4,    // Set to 40% opacity when active
         deadZone: 0.08,            // 8% dead zone for better control
         autoHide: true,            // Enable auto-hide feature
         autoHideDelay: 5000,       // Hide after 5 seconds of inactivity
@@ -1391,7 +1391,8 @@ async function init() {
               const joystickBase = document.querySelector('.joystick-base');
               if (joystickBase) {
                 console.log('DEBUG: Found joystick base, setting position');
-                joystickBase.style.right = '80px';
+                joystickBase.style.right = '30px';
+                joystickBase.style.bottom = '30px';
                 joystickBase.style.left = 'auto';
                 joystickBase.style.display = 'block';
               } else {
@@ -1465,28 +1466,6 @@ async function init() {
     
     // Hide instructions by default
     instructions.style.display = 'none';
-    
-    // Add a button to toggle instructions
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Show/Hide Help';
-    toggleButton.style.position = 'absolute';
-    toggleButton.style.top = '10px';
-    toggleButton.style.right = '10px';
-    toggleButton.style.zIndex = '101';
-    toggleButton.addEventListener('click', () => {
-      if (instructions.style.display === 'none') {
-        instructions.style.display = 'block';
-      } else {
-        instructions.style.display = 'none';
-      }
-    });
-    document.body.appendChild(toggleButton);
-    
-    // Make button larger on mobile for easier tapping
-    if (isMobile) {
-      toggleButton.style.padding = '12px';
-      toggleButton.style.fontSize = '16px';
-    }
     
     // Start the animation loop
     animate();
