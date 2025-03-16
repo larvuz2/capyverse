@@ -28,6 +28,8 @@ class RemotePlayer {
     this.lastUpdate = Date.now();
     this.nameLabel = null;
     this.debugObject = null;
+    this.modelLoadAttempts = 0;
+    this.maxLoadAttempts = 3;
     console.log(`RemotePlayer constructor: ${id}, ${name}, position:`, this.position);
     
     // Create a simple debug object to make remote players immediately visible
@@ -54,13 +56,56 @@ class RemotePlayer {
     
     // Add to scene immediately
     scene.add(this.debugObject);
+    
+    // Create a temporary name label for the debug object
+    this.createTempNameLabel();
+  }
+  
+  createTempNameLabel() {
+    // Create canvas for the name label
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 256;
+    canvas.height = 64;
+    
+    // Draw background
+    context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw text
+    context.font = 'bold 32px Arial';
+    context.fillStyle = 'white';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(this.name, canvas.width / 2, canvas.height / 2);
+    
+    // Create texture from canvas
+    const texture = new THREE.Texture(canvas);
+    texture.needsUpdate = true;
+    
+    // Create sprite material
+    const material = new THREE.SpriteMaterial({ map: texture });
+    
+    // Create sprite
+    this.nameLabel = new THREE.Sprite(material);
+    this.nameLabel.scale.set(1, 0.25, 1);
+    
+    // Position above debug object
+    this.nameLabel.position.set(0, 1.2, 0);
+    this.debugObject.add(this.nameLabel);
   }
 
   loadModel() {
-    console.log(`Starting model load for player ${this.id}`);
+    this.modelLoadAttempts++;
+    console.log(`Starting model load for player ${this.id} (attempt ${this.modelLoadAttempts})`);
+    
+    // Check if model file exists first
+    const modelPath = 'models/capybara.glb';
+    console.log(`Loading model from path: ${modelPath}`);
+    
     // Use the same model as the local player
     const loader = new GLTFLoader();
-    loader.load('models/capybara.glb', 
+    loader.load(modelPath, 
       // Success callback
       (gltf) => {
         console.log(`Model loaded successfully for player ${this.id}`);
@@ -103,24 +148,45 @@ class RemotePlayer {
         scene.add(this.model);
         console.log(`Added model to scene for player ${this.id}`);
         
-        // Remove the debug object once the model is loaded
-        if (this.debugObject) {
-          scene.remove(this.debugObject);
-          this.debugObject = null;
-        }
-        
-        // Create name label
+        // Create name label for the actual model
         this.createNameLabel();
+        
+        // Remove the debug object once the model is loaded
+        this.removeDebugObject();
       },
       // Progress callback
       (xhr) => {
-        console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
+        if (xhr.total) {
+          console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
+        } else {
+          console.log(`Model ${this.id} loading progress: ${xhr.loaded} bytes loaded`);
+        }
       },
       // Error callback
       (error) => {
         console.error(`Error loading model for player ${this.id}:`, error);
+        
+        // Retry loading if under max attempts
+        if (this.modelLoadAttempts < this.maxLoadAttempts) {
+          console.log(`Retrying model load for player ${this.id} in 2 seconds...`);
+          setTimeout(() => this.loadModel(), 2000);
+        } else {
+          console.error(`Failed to load model for player ${this.id} after ${this.maxLoadAttempts} attempts`);
+        }
       }
     );
+  }
+  
+  removeDebugObject() {
+    if (this.debugObject) {
+      console.log(`Removing debug object for player ${this.id}`);
+      // If the debug object has the name label, remove it first
+      if (this.nameLabel && this.debugObject.children.includes(this.nameLabel)) {
+        this.debugObject.remove(this.nameLabel);
+      }
+      scene.remove(this.debugObject);
+      this.debugObject = null;
+    }
   }
   
   createNameLabel() {
@@ -156,6 +222,7 @@ class RemotePlayer {
     if (this.model) {
       this.nameLabel.position.set(0, 1.2, 0); // Position above character
       this.model.add(this.nameLabel);
+      console.log(`Added name label to model for player ${this.id}`);
     }
   }
   
@@ -202,7 +269,14 @@ class RemotePlayer {
   }
   
   playAnimation(state) {
-    if (this.animations && this.animations[state] && this.currentAnimation !== state) {
+    if (!this.animations || !this.animations[state]) {
+      console.warn(`Animation "${state}" not found for player ${this.id}`);
+      return;
+    }
+    
+    if (this.currentAnimation !== state) {
+      console.log(`Playing animation "${state}" for player ${this.id}`);
+      
       // Fade out current animation
       if (this.currentAnimation && this.animations[this.currentAnimation]) {
         this.animations[this.currentAnimation].fadeOut(0.2);
@@ -215,9 +289,25 @@ class RemotePlayer {
   }
   
   remove() {
+    // Remove the debug object if it exists
+    this.removeDebugObject();
+    
+    // Remove the model if it exists
     if (this.model) {
+      console.log(`Removing model for player ${this.id}`);
       scene.remove(this.model);
+      this.model = null;
     }
+    
+    // Clean up the mixer
+    if (this.mixer) {
+      this.mixer.stopAllAction();
+      this.mixer = null;
+    }
+    
+    // Clear animations
+    this.animations = {};
+    this.currentAnimation = null;
   }
 }
 
