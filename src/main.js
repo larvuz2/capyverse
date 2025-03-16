@@ -10,6 +10,140 @@ import { isMobileDevice, getMobileDeviceInfo, getDeviceOrientation, addOrientati
 import MobileJoystick from './utils/MobileControls.js';
 import { initMobileDebugger, logToDebugPanel } from './utils/MobileDebugger.js';
 import PlayerNameModal from './utils/PlayerNameModal.js';
+import { io } from 'socket.io-client';
+import { SERVER_URL } from './config.js';
+
+// Remote player management
+class RemotePlayer {
+  constructor(id, name, position, rotation) {
+    this.id = id;
+    this.name = name;
+    this.position = position;
+    this.rotation = rotation;
+    this.animationState = 'idle';
+    this.model = null;
+    this.mixer = null;
+    this.animations = {};
+    this.lastUpdate = Date.now();
+    this.nameLabel = null;
+    this.loadModel();
+  }
+
+  loadModel() {
+    // Use the same model as the local player
+    const loader = new GLTFLoader();
+    loader.load('models/capybara.glb', (gltf) => {
+      this.model = gltf.scene;
+      this.model.scale.set(0.5, 0.5, 0.5);
+      this.model.position.copy(this.position);
+      this.model.rotation.y = this.rotation.y;
+      
+      this.model.traverse((node) => {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+        }
+      });
+      
+      // Create animation mixer
+      this.mixer = new THREE.AnimationMixer(this.model);
+      
+      // Store animations by name
+      gltf.animations.forEach((clip) => {
+        this.animations[clip.name] = this.mixer.clipAction(clip);
+      });
+      
+      // Set initial animation
+      this.playAnimation('idle');
+      
+      // Add to scene
+      scene.add(this.model);
+      
+      // Create name label
+      this.createNameLabel();
+    });
+  }
+  
+  createNameLabel() {
+    // Create canvas for the name label
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 256;
+    canvas.height = 64;
+    
+    // Draw background
+    context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw text
+    context.font = 'bold 32px Arial';
+    context.fillStyle = 'white';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(this.name, canvas.width / 2, canvas.height / 2);
+    
+    // Create texture from canvas
+    const texture = new THREE.Texture(canvas);
+    texture.needsUpdate = true;
+    
+    // Create sprite material
+    const material = new THREE.SpriteMaterial({ map: texture });
+    
+    // Create sprite
+    this.nameLabel = new THREE.Sprite(material);
+    this.nameLabel.scale.set(1, 0.25, 1);
+    
+    // Add to scene
+    if (this.model) {
+      this.nameLabel.position.set(0, 1.2, 0); // Position above character
+      this.model.add(this.nameLabel);
+    }
+  }
+  
+  update(delta) {
+    // Update animation mixer
+    if (this.mixer) {
+      this.mixer.update(delta);
+    }
+  }
+  
+  updatePosition(position, rotation, animationState) {
+    this.position = position;
+    this.rotation = rotation;
+    this.animationState = animationState;
+    this.lastUpdate = Date.now();
+    
+    if (this.model) {
+      // Apply position with interpolation
+      this.model.position.lerp(new THREE.Vector3(position.x, position.y, position.z), 0.3);
+      
+      // Apply rotation
+      this.model.rotation.y = rotation.y;
+      
+      // Play animation if it changed
+      this.playAnimation(animationState);
+    }
+  }
+  
+  playAnimation(state) {
+    if (this.animations && this.animations[state] && this.currentAnimation !== state) {
+      // Fade out current animation
+      if (this.currentAnimation && this.animations[this.currentAnimation]) {
+        this.animations[this.currentAnimation].fadeOut(0.2);
+      }
+      
+      // Fade in new animation
+      this.animations[state].reset().fadeIn(0.2).play();
+      this.currentAnimation = state;
+    }
+  }
+  
+  remove() {
+    if (this.model) {
+      scene.remove(this.model);
+    }
+  }
+}
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -556,12 +690,14 @@ let mobileJoystick = null;
 let isMobile = false;
 
 // Add multiplayer variables
-let multiplayerManager = null;
+let socket = null;
+let playerName = "Guest";
 let playerNameModal = null;
-let playerName = '';
-let isMultiplayerEnabled = true; // Set to true to enable multiplayer by default
-let lastUpdateTime = 0; // For rate limiting multiplayer updates
-const UPDATE_INTERVAL = 100; // Send updates every 100ms (10 updates per second)
+const remotePlayers = new Map();
+let localPlayerId = null;
+const UPDATE_INTERVAL = 1000 / 15; // 15 updates per second
+let lastUpdateTime = 0;
+const isMultiplayerEnabled = true;
 
 // Initialize RAPIER before using it
 async function initRapier() {
@@ -1215,23 +1351,32 @@ function animate() {
     }
   }
   
-  // Update multiplayer - send position updates at a limited rate
-  if (isMultiplayerEnabled && multiplayerManager && multiplayerManager.isConnected && 
+  // Send position updates to server at regular intervals
+  if (isMultiplayerEnabled && socket && socket.connected && 
       character && characterBody && elapsedTime - lastUpdateTime > UPDATE_INTERVAL) {
     
     // Get character position and rotation
     const position = characterBody.translation();
     const rotation = { y: character.rotation.y };
     
+    // Get current animation state
+    const animationState = currentAnimation || 'idle';
+    
     // Send position update to server
-    // This will be implemented in the next phase with Socket.io
+    socket.emit('updatePosition', {
+      position: { x: position.x, y: position.y, z: position.z },
+      rotation: rotation,
+      animationState: animationState
+    });
     
     // Update last update time
     lastUpdateTime = elapsedTime;
   }
   
   // Update remote players with interpolation
-  // This will be implemented in the next phase with Socket.io
+  for (const remotePlayer of remotePlayers.values()) {
+    remotePlayer.update(delta);
+  }
   
   // Update nature environment if it exists
   if (natureEnvironment) {
@@ -1508,11 +1653,19 @@ async function init() {
       // Set callback for when player enters their name
       playerNameModal.onSubmit((name) => {
         playerName = name;
-        
-        // Connect to WebSocket server will be implemented later
         console.log(`Player name set to: ${playerName}`);
         
-        // We'll implement server connection here in the next phase
+        // Make all characters spawn at the same position
+        if (characterBody) {
+          characterBody.setTranslation({ x: 0, y: 1, z: 0 }, true);
+          character.rotation.y = Math.PI;
+        }
+        
+        // Add name label to player
+        createPlayerNameLabel(playerName);
+        
+        // Connect to the WebSocket server
+        initSocketConnection();
       });
       
       // Show player name modal
@@ -1812,6 +1965,128 @@ function updateOrangesSize() {
         config.oranges.size
       );
     }
+  }
+}
+
+// Create player name label for the local player
+function createPlayerNameLabel(name) {
+  // Create canvas for the name label
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  canvas.width = 256;
+  canvas.height = 64;
+  
+  // Draw background
+  context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw text
+  context.font = 'bold 32px Arial';
+  context.fillStyle = 'white';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(name, canvas.width / 2, canvas.height / 2);
+  
+  // Create texture from canvas
+  const texture = new THREE.Texture(canvas);
+  texture.needsUpdate = true;
+  
+  // Create sprite material
+  const material = new THREE.SpriteMaterial({ map: texture });
+  
+  // Create sprite
+  const nameLabel = new THREE.Sprite(material);
+  nameLabel.scale.set(1, 0.25, 1);
+  
+  // Add to scene
+  if (character) {
+    nameLabel.position.set(0, 1.2, 0); // Position above character
+    character.add(nameLabel);
+  }
+  
+  return nameLabel;
+}
+
+function initSocketConnection() {
+  // Connect to Socket.io server
+  socket = io(SERVER_URL);
+  
+  // Handle connection
+  socket.on('connect', () => {
+    console.log('Connected to server with id:', socket.id);
+    
+    // Join game with player name
+    socket.emit('join', { name: playerName });
+  });
+  
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log('Disconnected from server');
+  });
+  
+  // Handle game state (received on join)
+  socket.on('gameState', (state) => {
+    console.log('Game state received:', state);
+    
+    // Store local player ID
+    localPlayerId = state.playerId;
+    
+    // Create remote players
+    state.players.forEach(player => {
+      // Don't create a player for ourselves
+      if (player.id !== localPlayerId) {
+        addRemotePlayer(player);
+      }
+    });
+  });
+  
+  // Handle new player joined
+  socket.on('playerJoined', (player) => {
+    console.log('Player joined:', player);
+    addRemotePlayer(player);
+  });
+  
+  // Handle player left
+  socket.on('playerLeft', (data) => {
+    console.log('Player left:', data);
+    removeRemotePlayer(data.id);
+  });
+  
+  // Handle player movement
+  socket.on('playerMoved', (player) => {
+    updateRemotePlayer(player);
+  });
+}
+
+function addRemotePlayer(playerData) {
+  if (!remotePlayers.has(playerData.id)) {
+    console.log(`Adding remote player: ${playerData.name}`);
+    const remotePlayer = new RemotePlayer(
+      playerData.id,
+      playerData.name,
+      playerData.position,
+      playerData.rotation
+    );
+    remotePlayers.set(playerData.id, remotePlayer);
+  }
+}
+
+function updateRemotePlayer(playerData) {
+  const remotePlayer = remotePlayers.get(playerData.id);
+  if (remotePlayer) {
+    remotePlayer.updatePosition(
+      playerData.position,
+      playerData.rotation,
+      playerData.animationState
+    );
+  }
+}
+
+function removeRemotePlayer(playerId) {
+  const remotePlayer = remotePlayers.get(playerId);
+  if (remotePlayer) {
+    remotePlayer.remove();
+    remotePlayers.delete(playerId);
   }
 }
 
