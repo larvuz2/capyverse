@@ -99,82 +99,261 @@ class RemotePlayer {
     this.modelLoadAttempts++;
     console.log(`Starting model load for player ${this.id} (attempt ${this.modelLoadAttempts})`);
     
-    // Check if model file exists first
-    const modelPath = 'models/capybara.glb';
-    console.log(`Loading model from path: ${modelPath}`);
+    // Create an absolute path for the model based on the current window location
+    const baseUrl = window.location.origin;
+    const modelPath = new URL('models/capybara.glb', baseUrl).href;
+    console.log(`Loading model from absolute path: ${modelPath}`);
     
-    // Use the same model as the local player
-    const loader = new GLTFLoader();
-    loader.load(modelPath, 
-      // Success callback
-      (gltf) => {
-        console.log(`Model loaded successfully for player ${this.id}`);
-        this.model = gltf.scene;
-        this.model.scale.set(0.5, 0.5, 0.5);
-        
-        // Set initial position and rotation
-        if (this.position) {
-          this.model.position.set(this.position.x, this.position.y, this.position.z);
-          console.log(`Set model position for ${this.id} to:`, this.position);
-        } else {
-          this.model.position.set(0, 1, 0);
-          console.log(`No position provided for ${this.id}, using default`);
+    // Verify model path existence with a HEAD request before attempting to load
+    fetch(modelPath, { method: 'HEAD' })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Model file not found: ${response.status} ${response.statusText}`);
         }
+        console.log(`Model file exists at ${modelPath}, proceeding with load`);
         
-        if (this.rotation) {
-          this.model.rotation.y = this.rotation.y;
-        }
-        
-        this.model.traverse((node) => {
-          if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
+        // Use the same model as the local player
+        const loader = new GLTFLoader();
+        loader.load(modelPath, 
+          // Success callback
+          (gltf) => {
+            console.log(`Model loaded successfully for player ${this.id}`);
+            this.model = gltf.scene;
+            this.model.scale.set(0.5, 0.5, 0.5);
+            
+            // Set initial position and rotation
+            if (this.position) {
+              this.model.position.set(this.position.x, this.position.y, this.position.z);
+              console.log(`Set model position for ${this.id} to:`, this.position);
+            } else {
+              this.model.position.set(0, 1, 0);
+              console.log(`No position provided for ${this.id}, using default`);
+            }
+            
+            if (this.rotation) {
+              this.model.rotation.y = this.rotation.y;
+            }
+            
+            this.model.traverse((node) => {
+              if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+              }
+            });
+            
+            // Create animation mixer
+            this.mixer = new THREE.AnimationMixer(this.model);
+            
+            // Store animations by name
+            gltf.animations.forEach((clip) => {
+              const action = this.mixer.clipAction(clip);
+              this.animations[clip.name] = action;
+            });
+            
+            // Set initial animation
+            this.playAnimation('idle');
+            
+            // Add to scene
+            scene.add(this.model);
+            console.log(`Added model to scene for player ${this.id}`);
+            
+            // Create name label for the actual model
+            this.createNameLabel();
+            
+            // Remove the debug object once the model is loaded
+            this.removeDebugObject();
+          },
+          // Progress callback
+          (xhr) => {
+            if (xhr.total) {
+              console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
+            } else {
+              console.log(`Model ${this.id} loading progress: ${xhr.loaded} bytes loaded`);
+            }
+          },
+          // Error callback
+          (error) => {
+            console.error(`Error loading model for player ${this.id}:`, error);
+            
+            // Check if the model path might be wrong
+            if (error.message && error.message.includes('404')) {
+              console.error(`Model not found at path: ${modelPath}. Trying alternative path...`);
+              // Try alternative paths
+              this.tryAlternativePaths();
+            } else {
+              // Retry loading if under max attempts
+              if (this.modelLoadAttempts < this.maxLoadAttempts) {
+                console.log(`Retrying model load for player ${this.id} in 2 seconds...`);
+                setTimeout(() => this.loadModel(), 2000);
+              } else {
+                console.error(`Failed to load model for player ${this.id} after ${this.maxLoadAttempts} attempts`);
+              }
+            }
           }
-        });
-        
-        // Create animation mixer
-        this.mixer = new THREE.AnimationMixer(this.model);
-        
-        // Store animations by name
-        gltf.animations.forEach((clip) => {
-          const action = this.mixer.clipAction(clip);
-          this.animations[clip.name] = action;
-        });
-        
-        // Set initial animation
-        this.playAnimation('idle');
-        
-        // Add to scene
-        scene.add(this.model);
-        console.log(`Added model to scene for player ${this.id}`);
-        
-        // Create name label for the actual model
-        this.createNameLabel();
-        
-        // Remove the debug object once the model is loaded
-        this.removeDebugObject();
-      },
-      // Progress callback
-      (xhr) => {
-        if (xhr.total) {
+        );
+      })
+      .catch(error => {
+        console.error(`Error checking model path: ${error.message}`);
+        // Try alternative paths if the HEAD request fails
+        this.tryAlternativePaths();
+      });
+  }
+  
+  tryAlternativePaths() {
+    console.log(`Trying alternative paths for model loading for player ${this.id}`);
+    
+    // List of possible model paths to try
+    const possiblePaths = [
+      './models/capybara.glb',
+      '/models/capybara.glb',
+      'models/capybara.glb',
+      './character/capybara.glb',  // Try the same path used for local character
+      '/character/capybara.glb'
+    ];
+    
+    // Get path from the local character model reference that was loaded successfully
+    if (character) {
+      console.log('Using local character model path as reference');
+      
+      // Use the same model as the local player
+      const loader = new GLTFLoader();
+      const modelPath = './character/capybara.glb';
+      
+      loader.load(modelPath, 
+        // Success callback
+        (gltf) => {
+          // Same success callback as the original loadModel method
+          console.log(`Model loaded successfully from alternative path for player ${this.id}`);
+          this.model = gltf.scene;
+          this.model.scale.set(0.5, 0.5, 0.5);
+          
+          // Set initial position and rotation
+          if (this.position) {
+            this.model.position.set(this.position.x, this.position.y, this.position.z);
+          } else {
+            this.model.position.set(0, 1, 0);
+          }
+          
+          if (this.rotation) {
+            this.model.rotation.y = this.rotation.y;
+          }
+          
+          this.model.traverse((node) => {
+            if (node.isMesh) {
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+          
+          // Create animation mixer
+          this.mixer = new THREE.AnimationMixer(this.model);
+          
+          // Store animations by name
+          gltf.animations.forEach((clip) => {
+            const action = this.mixer.clipAction(clip);
+            this.animations[clip.name] = action;
+          });
+          
+          // Set initial animation
+          this.playAnimation('idle');
+          
+          // Add to scene
+          scene.add(this.model);
+          
+          // Create name label for the actual model
+          this.createNameLabel();
+          
+          // Remove the debug object once the model is loaded
+          this.removeDebugObject();
+        },
+        // Progress callback
+        (xhr) => {
+          if (xhr.total) {
+            console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
+          } else {
+            console.log(`Model ${this.id} loading progress: ${xhr.loaded} bytes loaded`);
+          }
+        },
+        // Error callback
+        (error) => {
+          console.error(`Error loading model from alternative path for player ${this.id}:`, error);
+          
+          // If we've tried all alternatives, log an error but keep the debug cube visible
+          if (this.modelLoadAttempts >= this.maxLoadAttempts) {
+            console.error(`Failed to load model after trying all alternative paths. Keeping debug cube visible.`);
+          } else {
+            // Try again with increased delay
+            this.modelLoadAttempts++;
+            const delay = this.modelLoadAttempts * 2000; // Exponential backoff
+            console.log(`Retrying model load in ${delay/1000} seconds...`);
+            setTimeout(() => this.loadModel(), delay);
+          }
+        }
+      );
+    } else {
+      console.error('Local character model not available as reference');
+      
+      // Retry with simple path
+      const loader = new GLTFLoader();
+      loader.load('./character/capybara.glb', 
+        (gltf) => {
+          // Same success handling as above
+          console.log(`Model loaded successfully from fallback path for player ${this.id}`);
+          this.model = gltf.scene;
+          this.model.scale.set(0.5, 0.5, 0.5);
+          
+          // Set initial position and rotation
+          if (this.position) {
+            this.model.position.set(this.position.x, this.position.y, this.position.z);
+          } else {
+            this.model.position.set(0, 1, 0);
+          }
+          
+          if (this.rotation) {
+            this.model.rotation.y = this.rotation.y;
+          }
+          
+          this.model.traverse((node) => {
+            if (node.isMesh) {
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+          
+          // Create animation mixer
+          this.mixer = new THREE.AnimationMixer(this.model);
+          
+          // Store animations by name
+          gltf.animations.forEach((clip) => {
+            const action = this.mixer.clipAction(clip);
+            this.animations[clip.name] = action;
+          });
+          
+          // Set initial animation
+          this.playAnimation('idle');
+          
+          // Add to scene
+          scene.add(this.model);
+          
+          // Create name label for the actual model
+          this.createNameLabel();
+          
+          // Remove the debug object once the model is loaded
+          this.removeDebugObject();
+        },
+        // Progress callback
+        (xhr) => {
           console.log(`Model ${this.id} loading progress: ${(xhr.loaded / xhr.total) * 100}%`);
-        } else {
-          console.log(`Model ${this.id} loading progress: ${xhr.loaded} bytes loaded`);
+        },
+        // Error callback
+        (error) => {
+          console.error(`Error loading model from fallback path for player ${this.id}:`, error);
+          
+          // If we've tried all alternatives, keep the debug cube
+          console.error(`Failed to load model using fallback path. Keeping debug cube visible.`);
         }
-      },
-      // Error callback
-      (error) => {
-        console.error(`Error loading model for player ${this.id}:`, error);
-        
-        // Retry loading if under max attempts
-        if (this.modelLoadAttempts < this.maxLoadAttempts) {
-          console.log(`Retrying model load for player ${this.id} in 2 seconds...`);
-          setTimeout(() => this.loadModel(), 2000);
-        } else {
-          console.error(`Failed to load model for player ${this.id} after ${this.maxLoadAttempts} attempts`);
-        }
-      }
-    );
+      );
+    }
   }
   
   removeDebugObject() {
