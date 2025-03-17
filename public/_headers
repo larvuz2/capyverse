@@ -1,0 +1,8 @@
+/*.wasm
+  Content-Type: application/wasm
+
+/*.js
+  Content-Type: application/javascript
+
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate 
