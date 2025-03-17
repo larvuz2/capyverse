@@ -376,7 +376,7 @@
 
 /* Add or update the debug container styles */
 #debug-container {
-  display: none; /* Hidden by default, shown via JS for mobile */
+  display: block; /* Always visible for easier debugging */
   position: fixed;
   bottom: 20px;
   right: 20px;
@@ -415,16 +415,40 @@
   display: none;
   position: fixed;
   bottom: 90px;
-  right: 10px;
-  width: 300px;
-  max-height: 400px;
+  right: 20px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 300px;
   overflow-y: auto;
   background-color: rgba(0, 0, 0, 0.85);
-  color: white;
   border-radius: 5px;
   padding: 10px;
+  color: white;
   font-family: monospace;
   font-size: 12px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
   z-index: 1999;
+}
+
+/* Debug log entries */
+.debug-log-entry {
+  margin-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 5px;
+}
+
+.debug-log-entry.error {
+  color: #ff5555;
+}
+
+.debug-log-entry.warn {
+  color: #ffcc55;
+}
+
+.debug-log-entry.info {
+  color: #55aaff;
+}
+
+.debug-log-entry.success {
+  color: #55ff55;
 }
